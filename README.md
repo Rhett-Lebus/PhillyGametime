@@ -139,6 +139,12 @@ Deploy and restart the service in one command:
 .\deploy-lightsail.ps1 -StaticIp "YOUR_LIGHTSAIL_STATIC_IP" -PemPath ".\LightsailDefaultKey-us-east-1.pem" -Restart
 ```
 
+Current production deploy command:
+
+```powershell
+.\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" -Restart
+```
+
 The script uploads:
 
 - `philly-gametime` Linux binary
@@ -171,6 +177,21 @@ The unit expects the app at:
 ```
 
 It runs the app on `PORT=8080`. Use your existing Nginx/Caddy/Apache reverse proxy, or open port `8080` in Lightsail if you want to access it directly.
+
+Production currently runs behind Caddy on the shared Lightsail instance. If another app already uses `8080`, configure this service to use a different port such as `8081`, then route the domain in `/etc/caddy/Caddyfile`:
+
+```caddy
+phillygametime.com, www.phillygametime.com {
+    reverse_proxy 127.0.0.1:8081
+}
+```
+
+After Caddy-only changes, reload Caddy instead of redeploying the app:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
 
 ### SSH Into Lightsail
 
