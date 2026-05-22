@@ -1,0 +1,13 @@
+# Build outputs
+*.exe
+*.test
+*.out
+
+# Local environment
+.env
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,37 @@
+{{define "header"}}
+<header class="site-header">
+  <div class="header-inner">
+    <a href="/" class="logo" aria-label="Philly Gametime home">
+      <span class="logo-mark" aria-hidden="true">
+        <svg class="pg-mark" viewBox="0 0 68 44" role="img" focusable="false">
+          <path class="pg-letter" d="M8 8h22c9 0 15 5 15 13S39 34 30 34h-8v-8h8c4 0 7-2 7-5s-3-5-7-5H18v22H8z" />
+          <path class="score-bar score-bar--flyers" d="M42 8h17v9H42z" />
+          <path class="score-bar score-bar--eagles" d="M42 19h17v8H42z" />
+          <path class="score-bar score-bar--phillies" d="M42 29h17v8H42z" />
+          <path class="pg-line" d="M20 5h25M20 39h40" />
+        </svg>
+      </span>
+      <span class="logo-text">PHILLY <strong>GAMETIME</strong></span>
+    </a>
+
+    <nav class="main-nav" aria-label="Primary">
+      <a href="/" class="nav-link {{if eq .NavActive "home"}}active{{end}}">Home</a>
+      <a href="/scores" class="nav-link {{if eq .NavActive "scores"}}active{{end}}">Live Scores</a>
+      <a href="/upcoming" class="nav-link {{if eq .NavActive "upcoming"}}active{{end}}">Upcoming</a>
+      <a href="/teams" class="nav-link {{if eq .NavActive "teams"}}active{{end}}">Teams</a>
+      <a href="/stats" class="nav-link {{if eq .NavActive "stats"}}active{{end}}">Stats</a>
+      <a href="/tv" class="nav-link {{if eq .NavActive "tv"}}active{{end}}">TV / Stream</a>
+    </nav>
+
+    <form class="search-form" action="/scores" method="get">
+      <input type="search" name="q" placeholder="Search teams" class="search-input" aria-label="Search teams">
+      <button type="submit" class="icon-button" aria-label="Search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m20 20-3.5-3.5"></path>
+        </svg>
+      </button>
+    </form>
+  </div>
+</header>
+{{end}}

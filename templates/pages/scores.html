@@ -1,0 +1,51 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Live scoreboard</p>
+  <h1>Live Scores</h1>
+</section>
+
+<section class="section">
+  <div class="game-cards-grid game-cards-grid--wide">
+    {{range .Games}}
+    <article class="game-card game-card--{{.Status | lower}}" data-game-id="{{.ID}}" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+      <div class="game-card-header">
+        {{if eq .Status "Live"}}
+          <span class="badge badge--live">Live</span>
+          <span class="game-period">{{.Period}} - {{.TimeLeft}}</span>
+        {{else if eq .Status "Final"}}
+          <span class="badge badge--final">Final</span>
+          <span class="game-period">{{.Period}}</span>
+        {{else}}
+          <span class="badge badge--scheduled">Scheduled</span>
+          <span class="game-period">{{formatDateTime .StartTime}}</span>
+        {{end}}
+        <span class="sport-tag">{{.Sport}}</span>
+      </div>
+      <div class="live-matchup" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+        <div class="live-team live-team--away">
+          <div class="live-logo">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
+          <span class="live-name">{{.AwayTeam.Name}}</span>
+          <span class="score-value score-away">{{.AwayScore}}</span>
+        </div>
+        <span class="live-vs">vs</span>
+        <div class="live-team live-team--home">
+          <span class="score-value score-home">{{.HomeScore}}</span>
+          <span class="live-name">{{.HomeTeam.Name}}</span>
+          <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
+        </div>
+      </div>
+      <div class="game-broadcast">
+        {{range $i, $b := .Broadcast}}
+          {{if eq $i 0}}<span class="broadcast-primary">{{broadcastShort $b}}</span>
+          {{else}}<span class="broadcast-secondary">{{$b}}</span>
+          {{end}}
+        {{end}}
+      </div>
+      <div class="game-venue-line">{{.Venue}}, {{.City}}</div>
+    </article>
+    {{else}}
+    <div class="empty-state">No Philly games today.</div>
+    {{end}}
+  </div>
+</section>
+{{end}}

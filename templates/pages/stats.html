@@ -1,0 +1,48 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Live team snapshot</p>
+  <h1>Stats</h1>
+</section>
+
+<div class="home-layout">
+  <section class="section main-content">
+    <div class="section-heading">
+      <h2>Standings</h2>
+    </div>
+    <div class="sidebar-section stats-panel">
+      <table class="standings-table standings-table--large">
+        <thead><tr><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
+        <tbody>
+          {{range .Standings}}
+          <tr style="--team-color:{{.Team.Primary}}">
+            <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.City}} {{.Team.Name}}</span></td>
+            <td><span class="stat-value">{{.Record}}</span></td>
+            <td><span class="stat-value">{{.Home}}</span></td>
+            <td><span class="stat-value">{{.Away}}</span></td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4">No live standings returned by the provider right now.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <section class="sidebar-section">
+      <h3>Recent Results</h3>
+      <div class="recent-list">
+        {{range .Recent}}
+        <div class="recent-item" style="--team-color:{{.Team.Primary}}">
+          <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
+          <span>{{.Team.Name}}</span>
+          <strong>{{.Record}}</strong>
+        </div>
+        {{else}}
+        <div class="empty-inline">No recent completed Philly games returned.</div>
+        {{end}}
+      </div>
+    </section>
+  </aside>
+</div>
+{{end}}

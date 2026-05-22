@@ -1,0 +1,44 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Live broadcast guide</p>
+  <h1>TV / Stream</h1>
+</section>
+
+<section class="section">
+  <div class="section-heading">
+    <h2>Upcoming Broadcasts</h2>
+  </div>
+  <div class="upcoming-list">
+    {{range $g := .Games}}
+    <article class="upcoming-item" style="border-left-color:{{(phillyTeam $g).Primary}}">
+      <div class="upcoming-teams" style="--away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
+        <div class="team-split team-split--away">
+          {{if $g.AwayTeam.LogoURL}}<img src="{{$g.AwayTeam.LogoURL}}" alt="{{$g.AwayTeam.City}} {{$g.AwayTeam.Name}} logo">{{else}}<span>{{$g.AwayTeam.Abbr}}</span>{{end}}
+        </div>
+        <div class="team-matchup">
+          <strong>{{$g.AwayTeam.Name}}</strong>
+          <span>{{vsAt $g}}</span>
+          <strong>{{$g.HomeTeam.Name}}</strong>
+        </div>
+        <div class="team-split team-split--home">
+          {{if $g.HomeTeam.LogoURL}}<img src="{{$g.HomeTeam.LogoURL}}" alt="{{$g.HomeTeam.City}} {{$g.HomeTeam.Name}} logo">{{else}}<span>{{$g.HomeTeam.Abbr}}</span>{{end}}
+        </div>
+      </div>
+      <div class="upcoming-info">
+        <span>{{formatDateTime $g.StartTime}}</span>
+        <span>{{$g.Venue}}, {{$g.City}}</span>
+      </div>
+      <div class="upcoming-tv">
+        {{range $g.Broadcast}}
+        <span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>
+        {{else}}
+        <span class="tv-badge">TBD</span>
+        {{end}}
+      </div>
+    </article>
+    {{else}}
+    <div class="empty-state">No upcoming broadcasts returned by the provider right now.</div>
+    {{end}}
+  </div>
+</section>
+{{end}}
