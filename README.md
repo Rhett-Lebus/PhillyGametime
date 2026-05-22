@@ -125,14 +125,52 @@ docker run --rm -p 8080:8080 -e PHILLY_DATA=mock philly-gametime
 
 ## Deploy
 
-This repo includes `render.yaml` for a Render web service using the Dockerfile.
+This repo includes Lightsail container deployment templates in `deploy/`.
 
-Deploy from GitHub:
+Recommended AWS Lightsail path:
 
-1. Push this repo to GitHub.
-2. In Render, choose **New +** -> **Blueprint**.
-3. Connect `Rhett-Lebus/PhillyGametime`.
-4. Render will read `render.yaml`, build the Docker image, and run the app on `PORT=8080`.
+1. Install and configure the AWS CLI.
+2. Install Docker locally.
+3. Create a Lightsail container service:
+
+```powershell
+aws lightsail create-container-service `
+  --service-name philly-gametime `
+  --power nano `
+  --scale 1
+```
+
+4. Build the image:
+
+```powershell
+docker build -t philly-gametime:latest .
+```
+
+5. Push the image to the Lightsail container service:
+
+```powershell
+aws lightsail push-container-image `
+  --service-name philly-gametime `
+  --label app `
+  --image philly-gametime:latest
+```
+
+6. Deploy the latest pushed image:
+
+```powershell
+aws lightsail create-container-service-deployment `
+  --service-name philly-gametime `
+  --containers file://deploy/lightsail-containers.json `
+  --public-endpoint file://deploy/lightsail-public-endpoint.json
+```
+
+7. Get the public URL:
+
+```powershell
+aws lightsail get-container-services --service-name philly-gametime
+```
+
+The deployment template uses image `:philly-gametime.app.latest`, which tells Lightsail to run the newest pushed image for service `philly-gametime` with label `app`.
 
 The service uses live ESPN-backed data by default. Do not set `PHILLY_DATA=mock` in production unless you want seeded preview data.
 

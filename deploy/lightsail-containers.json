@@ -1,0 +1,11 @@
+{
+  "philly-gametime": {
+    "image": ":philly-gametime.app.latest",
+    "ports": {
+      "8080": "HTTP"
+    },
+    "environment": {
+      "PORT": "8080"
+    }
+  }
+}
