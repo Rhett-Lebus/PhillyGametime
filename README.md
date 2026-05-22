@@ -2,7 +2,7 @@
 
 Go web app for quick-glance Philadelphia sports scores, schedules, standings, recent results, and TV/stream info.
 
-The app covers the Eagles, Phillies, 76ers, Flyers, and Union. By default it uses ESPN-backed data and ranks local Philly broadcasts ahead of national feeds when possible.
+The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-backed data by default, prioritizes local Philly broadcasts when available, and displays all game times in Philadelphia time (`America/New_York`).
 
 ## Features
 
@@ -12,13 +12,15 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. By default it use
 - Team directory
 - Stats/standings page
 - TV/stream guide with Philly-first broadcast sorting
+- Theme picker with Basic, Light, Dark, and Neon modes
 - Server-sent events endpoint for score and sport-specific event hooks
-- Mock data mode for design/development previews
+- Mock data mode for local design/development previews
 
 ## Requirements
 
 - Go 1.22 or newer
 - Network access for live ESPN-backed data
+- OpenSSH client for Lightsail deploys (`ssh` and `scp`)
 
 ## Run Locally
 
@@ -57,11 +59,18 @@ Open:
 http://localhost:8090
 ```
 
-To return to live data in the same shell, clear the variable:
+To return to live data in the same shell:
 
 ```powershell
 Remove-Item Env:\PHILLY_DATA
 go run .
+```
+
+## Build And Test
+
+```powershell
+go test ./...
+go build ./...
 ```
 
 ## Routes
@@ -96,68 +105,37 @@ The `events.Bus` publishes:
 
 This is intended as the integration point for future lighting/DMX, notification, or automation hooks.
 
-## Build And Test
+## Deployment
 
-```powershell
-go test ./...
-go build ./...
-```
+Production runs on the shared AWS Lightsail instance at `52.1.97.78`, behind Caddy.
 
-## Docker
-
-Build the image:
-
-```powershell
-docker build -t philly-gametime .
-```
-
-Run on port `8080`:
-
-```powershell
-docker run --rm -p 8080:8080 philly-gametime
-```
-
-Run with mock data:
-
-```powershell
-docker run --rm -p 8080:8080 -e PHILLY_DATA=mock philly-gametime
-```
-
-## Deploy
-
-This repo uses the same direct Lightsail instance workflow as the HoustonTrio site: build a Linux binary locally, upload it over SSH/SCP, upload templates/static assets, then restart a systemd service.
-
-Example deploy:
-
-```powershell
-.\deploy-lightsail.ps1 -StaticIp "YOUR_LIGHTSAIL_STATIC_IP" -PemPath ".\LightsailDefaultKey-us-east-1.pem"
-```
-
-Deploy and restart the service in one command:
-
-```powershell
-.\deploy-lightsail.ps1 -StaticIp "YOUR_LIGHTSAIL_STATIC_IP" -PemPath ".\LightsailDefaultKey-us-east-1.pem" -Restart
-```
-
-Current production deploy command:
+Normal production deploy:
 
 ```powershell
 .\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" -Restart
 ```
 
-The script uploads:
+The script:
 
-- `philly-gametime` Linux binary
-- `templates/`
-- `static/`
+- builds a Linux `amd64` binary named `philly-gametime`
+- uploads the binary to `/home/ubuntu/philly-gametime`
+- uploads `templates/`
+- uploads `static/`
+- restarts the `philly-gametime` systemd service when `-Restart` is used
 
-### First-Time Lightsail Setup
+### First-Time Server Setup
 
-Copy the included systemd unit to the server once:
+The systemd unit lives at:
+
+```text
+deploy/philly-gametime.service
+```
+
+Upload it once:
 
 ```powershell
-scp -O -i .\LightsailDefaultKey-us-east-1.pem .\deploy\philly-gametime.service ubuntu@YOUR_LIGHTSAIL_STATIC_IP:/tmp/philly-gametime.service
-ssh -i .\LightsailDefaultKey-us-east-1.pem ubuntu@YOUR_LIGHTSAIL_STATIC_IP
+scp -O -i "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" .\deploy\philly-gametime.service ubuntu@52.1.97.78:/tmp/philly-gametime.service
+ssh -i "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" ubuntu@52.1.97.78
 ```
 
 Then on the server:
@@ -170,15 +148,31 @@ sudo systemctl start philly-gametime
 sudo systemctl status philly-gametime
 ```
 
-The unit expects the app at:
+If another app already uses port `8080`, set Philly Gametime to a different internal port such as `8081` in `/etc/systemd/system/philly-gametime.service`:
 
-```text
-/home/ubuntu/philly-gametime
+```ini
+Environment=PORT=8081
 ```
 
-It runs the app on `PORT=8080`. Use your existing Nginx/Caddy/Apache reverse proxy, or open port `8080` in Lightsail if you want to access it directly.
+Then reload and restart:
 
-Production currently runs behind Caddy on the shared Lightsail instance. If another app already uses `8080`, configure this service to use a different port such as `8081`, then route the domain in `/etc/caddy/Caddyfile`:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart philly-gametime
+```
+
+### Caddy
+
+The DNS records for `phillygametime.com` and `www.phillygametime.com` should point to the Lightsail static IP.
+
+Current production DNS:
+
+```text
+phillygametime.com      A  52.1.97.78
+www.phillygametime.com  A  52.1.97.78
+```
+
+Caddy route:
 
 ```caddy
 phillygametime.com, www.phillygametime.com {
@@ -193,17 +187,9 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-### SSH Into Lightsail
-
-```powershell
-ssh -i .\LightsailDefaultKey-us-east-1.pem ubuntu@YOUR_LIGHTSAIL_STATIC_IP
-```
-
-The service uses live ESPN-backed data by default. Do not set `PHILLY_DATA=mock` in production unless you want seeded preview data.
-
 ## Notes
 
 - The default store calls ESPN scoreboard/schedule endpoints.
 - Local Philly broadcast names are prioritized, including `NBC Sports Philadelphia`, `NBCSP`, `NBC10`, `PHL17`, `6abc`, and `FOX 29`.
 - Game dates and times are displayed in Philadelphia time (`America/New_York`) regardless of the server timezone.
-- The committed UI currently uses the PG-style header mark with Flyers orange, Eagles teal, and Phillies red score bars.
+- The committed UI uses the PG-style header mark with Flyers orange, Eagles teal, and Phillies red score bars.
