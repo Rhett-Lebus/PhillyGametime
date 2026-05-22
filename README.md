@@ -123,6 +123,19 @@ Run with mock data:
 docker run --rm -p 8080:8080 -e PHILLY_DATA=mock philly-gametime
 ```
 
+## Deploy
+
+This repo includes `render.yaml` for a Render web service using the Dockerfile.
+
+Deploy from GitHub:
+
+1. Push this repo to GitHub.
+2. In Render, choose **New +** -> **Blueprint**.
+3. Connect `Rhett-Lebus/PhillyGametime`.
+4. Render will read `render.yaml`, build the Docker image, and run the app on `PORT=8080`.
+
+The service uses live ESPN-backed data by default. Do not set `PHILLY_DATA=mock` in production unless you want seeded preview data.
+
 ## Notes
 
 - The default store calls ESPN scoreboard/schedule endpoints.

@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} | Philly Gametime</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=20260522-pg-soft-sports">
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem('phillyGametimeTheme') || 'basic';
+  </script>
+  <link rel="stylesheet" href="/static/css/style.css?v=20260522-theme-picker">
 </head>
 <body>
   {{template "header" .}}
@@ -14,7 +17,7 @@
   </main>
 
   {{template "footer" .}}
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=20260522-theme-picker"></script>
 </body>
 </html>
 {{end}}

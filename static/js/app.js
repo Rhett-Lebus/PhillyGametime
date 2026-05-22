@@ -2,6 +2,42 @@
 
 (function () {
   const POLL_INTERVAL = 30000;
+  const THEME_KEY = 'phillyGametimeTheme';
+  const DEFAULT_THEME = 'basic';
+
+  function getStoredTheme() {
+    try {
+      return localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
+    } catch {
+      return DEFAULT_THEME;
+    }
+  }
+
+  function storeTheme(theme) {
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {}
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme || DEFAULT_THEME;
+  }
+
+  function initThemePicker() {
+    const select = document.getElementById('theme-select');
+    if (!select) return;
+
+    const currentTheme = getStoredTheme();
+    select.value = currentTheme;
+    applyTheme(currentTheme);
+
+    select.addEventListener('change', () => {
+      applyTheme(select.value);
+      storeTheme(select.value);
+    });
+  }
+
+  applyTheme(getStoredTheme());
 
   function updateCardDOM(game) {
     const card = document.querySelector(`[data-game-id="${game.ID}"]`);
@@ -65,6 +101,7 @@
   }
 
   connectEvents();
+  initThemePicker();
   setInterval(pollScores, POLL_INTERVAL);
 
   window.PhillyGametime = {
