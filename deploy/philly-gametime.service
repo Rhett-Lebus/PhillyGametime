@@ -1,0 +1,15 @@
+[Unit]
+Description=Philly Gametime
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/philly-gametime
+Environment=PORT=8080
+ExecStart=/home/ubuntu/philly-gametime/philly-gametime
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

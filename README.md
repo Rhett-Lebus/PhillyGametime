@@ -125,52 +125,58 @@ docker run --rm -p 8080:8080 -e PHILLY_DATA=mock philly-gametime
 
 ## Deploy
 
-This repo includes Lightsail container deployment templates in `deploy/`.
+This repo uses the same direct Lightsail instance workflow as the HoustonTrio site: build a Linux binary locally, upload it over SSH/SCP, upload templates/static assets, then restart a systemd service.
 
-Recommended AWS Lightsail path:
-
-1. Install and configure the AWS CLI.
-2. Install Docker locally.
-3. Create a Lightsail container service:
+Example deploy:
 
 ```powershell
-aws lightsail create-container-service `
-  --service-name philly-gametime `
-  --power nano `
-  --scale 1
+.\deploy-lightsail.ps1 -StaticIp "YOUR_LIGHTSAIL_STATIC_IP" -PemPath ".\LightsailDefaultKey-us-east-1.pem"
 ```
 
-4. Build the image:
+Deploy and restart the service in one command:
 
 ```powershell
-docker build -t philly-gametime:latest .
+.\deploy-lightsail.ps1 -StaticIp "YOUR_LIGHTSAIL_STATIC_IP" -PemPath ".\LightsailDefaultKey-us-east-1.pem" -Restart
 ```
 
-5. Push the image to the Lightsail container service:
+The script uploads:
+
+- `philly-gametime` Linux binary
+- `templates/`
+- `static/`
+
+### First-Time Lightsail Setup
+
+Copy the included systemd unit to the server once:
 
 ```powershell
-aws lightsail push-container-image `
-  --service-name philly-gametime `
-  --label app `
-  --image philly-gametime:latest
+scp -O -i .\LightsailDefaultKey-us-east-1.pem .\deploy\philly-gametime.service ubuntu@YOUR_LIGHTSAIL_STATIC_IP:/tmp/philly-gametime.service
+ssh -i .\LightsailDefaultKey-us-east-1.pem ubuntu@YOUR_LIGHTSAIL_STATIC_IP
 ```
 
-6. Deploy the latest pushed image:
+Then on the server:
+
+```bash
+sudo mv /tmp/philly-gametime.service /etc/systemd/system/philly-gametime.service
+sudo systemctl daemon-reload
+sudo systemctl enable philly-gametime
+sudo systemctl start philly-gametime
+sudo systemctl status philly-gametime
+```
+
+The unit expects the app at:
+
+```text
+/home/ubuntu/philly-gametime
+```
+
+It runs the app on `PORT=8080`. Use your existing Nginx/Caddy/Apache reverse proxy, or open port `8080` in Lightsail if you want to access it directly.
+
+### SSH Into Lightsail
 
 ```powershell
-aws lightsail create-container-service-deployment `
-  --service-name philly-gametime `
-  --containers file://deploy/lightsail-containers.json `
-  --public-endpoint file://deploy/lightsail-public-endpoint.json
+ssh -i .\LightsailDefaultKey-us-east-1.pem ubuntu@YOUR_LIGHTSAIL_STATIC_IP
 ```
-
-7. Get the public URL:
-
-```powershell
-aws lightsail get-container-services --service-name philly-gametime
-```
-
-The deployment template uses image `:philly-gametime.app.latest`, which tells Lightsail to run the newest pushed image for service `philly-gametime` with label `app`.
 
 The service uses live ESPN-backed data by default. Do not set `PHILLY_DATA=mock` in production unless you want seeded preview data.
 

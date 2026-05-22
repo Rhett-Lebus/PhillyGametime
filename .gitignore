@@ -1,10 +1,12 @@
 # Build outputs
+philly-gametime
 *.exe
 *.test
 *.out
 
 # Local environment
 .env
+*.pem
 
 # OS/editor files
 .DS_Store

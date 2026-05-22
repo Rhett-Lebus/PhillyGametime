@@ -1,8 +1,0 @@
-{
-  "containerName": "philly-gametime",
-  "containerPort": 8080,
-  "healthCheck": {
-    "path": "/",
-    "successCodes": "200-399"
-  }
-}
