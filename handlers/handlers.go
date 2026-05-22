@@ -48,8 +48,8 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 			return g.AwayTeam
 		},
 		"dayLabel": func(t time.Time) string {
-			now := time.Now().Local()
-			gameTime := t.Local()
+			now := data.NowPhilly()
+			gameTime := data.PhillyTime(t)
 			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 			gameDay := time.Date(gameTime.Year(), gameTime.Month(), gameTime.Day(), 0, 0, 0, 0, now.Location())
 			switch int(gameDay.Sub(today).Hours() / 24) {
@@ -62,7 +62,7 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 			}
 		},
 		"formatDateTime": func(t time.Time) string {
-			return t.Local().Format("Monday, Jan 2 - 3:04 PM MST")
+			return data.PhillyTime(t).Format("Monday, Jan 2 - 3:04 PM MST")
 		},
 		"broadcastShort": func(network string) string {
 			switch strings.ToLower(network) {

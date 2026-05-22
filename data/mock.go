@@ -67,7 +67,7 @@ func (s *MockStore) GetTeams() []models.Team {
 }
 
 func (s *MockStore) GetTodaysGames() []models.Game {
-	now := time.Now()
+	now := NowPhilly()
 	return []models.Game{
 		{
 			ID:        "game-sixers-nets",
@@ -78,7 +78,7 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 			Status:    models.StatusLive,
 			Period:    "Q3",
 			TimeLeft:  "04:12",
-			StartTime: time.Date(now.Year(), now.Month(), now.Day(), 19, 30, 0, 0, time.Local),
+			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 19, 30, 0),
 			Venue:     "Wells Fargo Center",
 			City:      "Philadelphia, PA",
 			Broadcast: []string{"NBC Sports Philadelphia", "97.5 The Fanatic"},
@@ -92,7 +92,7 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 			AwayScore: 4,
 			Status:    models.StatusFinal,
 			Period:    "Final",
-			StartTime: time.Date(now.Year(), now.Month(), now.Day(), 13, 5, 0, 0, time.Local),
+			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 13, 5, 0),
 			Venue:     "Citizens Bank Park",
 			City:      "Philadelphia, PA",
 			Broadcast: []string{"NBC Sports Philadelphia"},
@@ -102,7 +102,7 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 }
 
 func (s *MockStore) GetUpcomingGames() []models.Game {
-	base := time.Now()
+	base := NowPhilly()
 	next := func(days int) time.Time { return base.AddDate(0, 0, days) }
 
 	return []models.Game{
@@ -111,7 +111,7 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 			HomeTeam:  Eagles,
 			AwayTeam:  Giants,
 			Status:    models.StatusScheduled,
-			StartTime: time.Date(next(1).Year(), next(1).Month(), next(1).Day(), 16, 25, 0, 0, time.Local),
+			StartTime: DatePhilly(next(1).Year(), next(1).Month(), next(1).Day(), 16, 25, 0),
 			Venue:     "Lincoln Financial Field",
 			City:      "Philadelphia, PA",
 			Broadcast: []string{"FOX 29", "94.1 WIP"},
@@ -122,7 +122,7 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 			HomeTeam:  Flyers,
 			AwayTeam:  Penguins,
 			Status:    models.StatusScheduled,
-			StartTime: time.Date(next(3).Year(), next(3).Month(), next(3).Day(), 19, 0, 0, 0, time.Local),
+			StartTime: DatePhilly(next(3).Year(), next(3).Month(), next(3).Day(), 19, 0, 0),
 			Venue:     "Wells Fargo Center",
 			City:      "Philadelphia, PA",
 			Broadcast: []string{"NBCSP", "97.5 The Fanatic"},
@@ -133,7 +133,7 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 			HomeTeam:  RedBulls,
 			AwayTeam:  Union,
 			Status:    models.StatusScheduled,
-			StartTime: time.Date(next(4).Year(), next(4).Month(), next(4).Day(), 19, 30, 0, 0, time.Local),
+			StartTime: DatePhilly(next(4).Year(), next(4).Month(), next(4).Day(), 19, 30, 0),
 			Venue:     "Red Bull Arena",
 			City:      "Harrison, NJ",
 			Broadcast: []string{"Apple TV+"},
@@ -144,7 +144,7 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 			HomeTeam:  Bucks,
 			AwayTeam:  Sixers,
 			Status:    models.StatusScheduled,
-			StartTime: time.Date(next(5).Year(), next(5).Month(), next(5).Day(), 20, 0, 0, 0, time.Local),
+			StartTime: DatePhilly(next(5).Year(), next(5).Month(), next(5).Day(), 20, 0, 0),
 			Venue:     "Fiserv Forum",
 			City:      "Milwaukee, WI",
 			Broadcast: []string{"TNT"},

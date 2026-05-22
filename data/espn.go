@@ -274,13 +274,13 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 			if err := s.fetchJSON(cfg.ScoreboardURL, &sb); err != nil {
 				return
 			}
-			todayY, todayM, todayD := time.Now().Local().Date()
+			todayY, todayM, todayD := NowPhilly().Date()
 			for _, ev := range sb.Events {
 				g, ok := parseESPNEvent(ev, cfg.Sport)
 				if !ok || !isPhillyGame(g) {
 					continue
 				}
-				gy, gm, gd := g.StartTime.Local().Date()
+				gy, gm, gd := PhillyTime(g.StartTime).Date()
 				if gy != todayY || gm != todayM || gd != todayD {
 					continue // ESPN scoreboards can include the full week's slate
 				}
@@ -333,7 +333,7 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 	var mu sync.Mutex
 	nextByKey := map[string]*models.Game{} // keyed by "sport:teamID"
 	var wg sync.WaitGroup
-	now := time.Now()
+	now := NowPhilly()
 
 	for _, cfg := range sportConfigs {
 		cfg := cfg
@@ -385,7 +385,7 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 			}
 			for _, ev := range sched.Events {
 				g, ok := parseESPNEvent(ev, cfg.Sport)
-				if !ok || !isPhillyGame(g) || !g.StartTime.After(now) {
+				if !ok || !isPhillyGame(g) || !PhillyTime(g.StartTime).After(now) {
 					continue
 				}
 				gc := g
@@ -554,7 +554,7 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 	results := make([]models.RecentResult, 0)
 	seen := map[string]bool{}
 	var wg sync.WaitGroup
-	now := time.Now()
+	now := NowPhilly()
 
 	for _, cfg := range sportConfigs {
 		cfg := cfg
@@ -896,7 +896,7 @@ func fallbackLogoURL(team models.Team) string {
 
 // isInSeason returns true when the sport is actively playing regular/post-season.
 func isInSeason(sport models.Sport) bool {
-	m := time.Now().Month()
+	m := NowPhilly().Month()
 	switch sport {
 	case models.NFL:
 		// September – February

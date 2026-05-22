@@ -205,4 +205,5 @@ The service uses live ESPN-backed data by default. Do not set `PHILLY_DATA=mock`
 
 - The default store calls ESPN scoreboard/schedule endpoints.
 - Local Philly broadcast names are prioritized, including `NBC Sports Philadelphia`, `NBCSP`, `NBC10`, `PHL17`, `6abc`, and `FOX 29`.
+- Game dates and times are displayed in Philadelphia time (`America/New_York`) regardless of the server timezone.
 - The committed UI currently uses the PG-style header mark with Flyers orange, Eagles teal, and Phillies red score bars.
