@@ -112,7 +112,7 @@ Production runs on the shared AWS Lightsail instance at `52.1.97.78`, behind Cad
 Normal production deploy:
 
 ```powershell
-.\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" -Restart
+.\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\PhillyGametime-GPT\LightsailDefaultKey-us-east-1.pem" -Restart
 ```
 
 The script:
