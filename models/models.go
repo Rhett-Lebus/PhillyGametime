@@ -29,6 +29,7 @@ const (
 	StatusScheduled GameStatus = "Scheduled"
 	StatusLive      GameStatus = "Live"
 	StatusFinal     GameStatus = "Final"
+	StatusDelayed   GameStatus = "Delayed"
 	StatusPostponed GameStatus = "Postponed"
 	StatusCancelled GameStatus = "Cancelled"
 )

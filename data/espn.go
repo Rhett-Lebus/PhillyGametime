@@ -786,6 +786,8 @@ func espnGameStatus(s espnStatus) models.GameStatus {
 		return models.StatusFinal
 	case n == "STATUS_IN_PROGRESS", n == "STATUS_HALFTIME", n == "STATUS_END_PERIOD":
 		return models.StatusLive
+	case strings.Contains(n, "DELAY"):
+		return models.StatusDelayed
 	case n == "STATUS_POSTPONED":
 		return models.StatusPostponed
 	case n == "STATUS_CANCELED", n == "STATUS_CANCELLED":

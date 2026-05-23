@@ -16,6 +16,15 @@
             {{else if eq .Status "Final"}}
               <span class="badge badge--final">Final</span>
               <span class="game-period">{{.Period}}</span>
+            {{else if eq .Status "Delayed"}}
+              <span class="badge badge--delayed">Delayed</span>
+              <span class="game-period">{{if .Period}}{{.Period}}{{else}}{{formatDateTime .StartTime}}{{end}}</span>
+            {{else if eq .Status "Postponed"}}
+              <span class="badge badge--postponed">Postponed</span>
+              <span class="game-period">{{if .Period}}{{.Period}}{{else}}{{formatDateTime .StartTime}}{{end}}</span>
+            {{else if eq .Status "Cancelled"}}
+              <span class="badge badge--cancelled">Cancelled</span>
+              <span class="game-period">{{if .Period}}{{.Period}}{{else}}{{formatDateTime .StartTime}}{{end}}</span>
             {{else}}
               <span class="badge badge--scheduled">Scheduled</span>
               <span class="game-period">{{formatDateTime .StartTime}}</span>

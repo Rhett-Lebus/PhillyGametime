@@ -45,8 +45,20 @@
 
     const away = card.querySelector('.score-away');
     const home = card.querySelector('.score-home');
+    const badge = card.querySelector('.badge');
     const period = card.querySelector('.game-period');
     let changed = false;
+
+    const statusClass = `game-card--${String(game.Status || '').toLowerCase()}`;
+    ['game-card--scheduled', 'game-card--live', 'game-card--final', 'game-card--delayed', 'game-card--postponed', 'game-card--cancelled']
+      .forEach((className) => card.classList.toggle(className, className === statusClass));
+
+    if (badge) {
+      ['badge--scheduled', 'badge--live', 'badge--final', 'badge--delayed', 'badge--postponed', 'badge--cancelled']
+        .forEach((className) => badge.classList.remove(className));
+      badge.classList.add(`badge--${String(game.Status || 'Scheduled').toLowerCase()}`);
+      badge.textContent = game.Status || 'Scheduled';
+    }
 
     if (away && String(game.AwayScore) !== away.textContent) {
       away.textContent = game.AwayScore;
@@ -56,8 +68,12 @@
       home.textContent = game.HomeScore;
       changed = true;
     }
-    if (period && game.Status === 'Live') {
-      period.textContent = game.TimeLeft ? `${game.Period} - ${game.TimeLeft}` : game.Period;
+    if (period) {
+      if (game.Status === 'Live') {
+        period.textContent = game.TimeLeft ? `${game.Period} - ${game.TimeLeft}` : game.Period;
+      } else if (['Delayed', 'Postponed', 'Cancelled', 'Final'].includes(game.Status) && game.Period) {
+        period.textContent = game.Period;
+      }
     }
 
     const baseball = card.querySelector('.baseball-live');
