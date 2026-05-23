@@ -435,6 +435,96 @@ a { color: inherit; text-decoration: none; }
   line-height: 1;
   font-weight: 900;
 }
+.baseball-live {
+  display: grid;
+  grid-template-columns: 66px minmax(0, .8fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 12px;
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  color: #fff;
+  background: rgba(7,13,23,.38);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.bases-diamond {
+  position: relative;
+  width: 54px;
+  height: 44px;
+  justify-self: center;
+}
+.base {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  background: rgba(255,255,255,.2);
+  border: 1px solid rgba(255,255,255,.44);
+  border-radius: 2px;
+}
+.base--occupied {
+  background: #f5c84b;
+  border-color: #ffe9a3;
+  box-shadow: 0 0 12px rgba(245,200,75,.42);
+}
+.base--second { top: 2px; left: 20px; }
+.base--third { top: 17px; left: 4px; }
+.base--first { top: 17px; right: 4px; }
+.base--home {
+  bottom: 0;
+  left: 20px;
+  width: 11px;
+  height: 11px;
+  opacity: .64;
+}
+.baseball-count {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.baseball-count span {
+  color: rgba(255,255,255,.76);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.baseball-count strong {
+  color: #fff;
+  font-size: 13px;
+}
+.baseball-count__outs {
+  grid-column: 1 / -1;
+}
+.baseball-players {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+.baseball-players span {
+  min-width: 0;
+}
+.baseball-players small {
+  display: block;
+  color: rgba(255,255,255,.62);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.baseball-players strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,.65);
+}
 .vs-divider { color: rgba(255,255,255,.54); font-weight: 900; }
 .team-badge {
   width: 50px;
@@ -624,11 +714,11 @@ a { color: inherit; text-decoration: none; }
 .sidebar-section h3 { margin-bottom: 12px; }
 .recent-item {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 90px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  min-height: 48px;
-  padding: 6px 8px;
+  gap: 14px;
+  min-height: 66px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   font-size: 13px;
   border-left: 0;
@@ -636,8 +726,8 @@ a { color: inherit; text-decoration: none; }
   background:
     linear-gradient(90deg,
       rgba(0,0,0,.28) 0%,
-      rgba(0,0,0,.18) 35%,
-      rgba(0,0,0,.1) 62%,
+      rgba(0,0,0,.16) 38%,
+      rgba(0,0,0,.08) 62%,
       rgba(0,0,0,.22) 100%),
     var(--team-color);
 }
@@ -649,18 +739,66 @@ a { color: inherit; text-decoration: none; }
   font-weight: 900;
   text-shadow: 0 1px 2px rgba(0,0,0,.65);
 }
+.recent-matchup {
+  display: grid;
+  gap: 3px;
+  line-height: 1.1;
+}
+.recent-matchup strong,
+.recent-matchup small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-matchup strong {
+  font-size: 14px;
+}
+.recent-matchup small {
+  color: rgba(255,255,255,.78);
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
 .recent-item > strong {
   justify-self: end;
   color: #fff;
   background: transparent;
   border: 0;
   border-radius: 0;
-  padding: 4px 0 4px 8px;
-  font-size: 12px;
+  padding: 4px 0 4px 10px;
+  font-size: 14px;
   font-weight: 900;
   white-space: nowrap;
   text-shadow: 0 1px 2px rgba(0,0,0,.7);
   box-shadow: none;
+}
+.recent-logos {
+  display: grid;
+  grid-template-columns: 36px 14px 36px;
+  align-items: center;
+  justify-items: center;
+  width: 90px;
+  min-width: 0;
+}
+.recent-logos::before {
+  content: "vs";
+  grid-column: 2;
+  color: rgba(255,255,255,.78);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,.65);
+}
+.recent-logos .result-logo:first-child {
+  grid-column: 1;
+}
+.recent-logos .result-logo + .result-logo {
+  grid-column: 3;
+}
+.result-logo--opponent {
+  width: 36px;
+  height: 36px;
 }
 .standings-table {
   width: 100%;
@@ -857,13 +995,17 @@ a { color: inherit; text-decoration: none; }
   .live-logo { width: 54px; height: 54px; }
   .live-name { display: none; }
   .score-value { font-size: 36px; min-width: 38px; }
+  .baseball-live { grid-template-columns: 56px 1fr; }
+  .baseball-players { grid-column: 1 / -1; }
   .team-matchup { font-size: 13px; gap: 5px; padding: 0 12px; }
   .team-split img { width: 48px; height: 48px; }
   .upcoming-teams { grid-template-columns: 74px minmax(0, 1fr) 74px; min-height: 52px; }
   .team-split--away { padding-right: 10px; }
   .team-split--home { padding-left: 10px; }
-  .recent-item { grid-template-columns: 38px minmax(0, 1fr) auto; }
-  .result-logo { width: 34px; height: 34px; }
+  .recent-item { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 10px; padding: 9px 10px; }
+  .recent-logos { grid-template-columns: 31px 12px 31px; width: 78px; }
+  .result-logo { width: 31px; height: 31px; }
+  .result-logo--opponent { width: 31px; height: 31px; }
   .search-form { width: 100%; }
   .search-input { flex: 1; width: auto; }
   .theme-picker {

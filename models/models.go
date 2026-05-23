@@ -42,11 +42,23 @@ type Game struct {
 	Status    GameStatus
 	Period    string // "Q3", "4th", "7th Inning", "P2", "90'"
 	TimeLeft  string // "04:12"
+	Baseball  *BaseballState
 	StartTime time.Time
 	Venue     string
 	City      string
 	Broadcast []string // primary is TV, secondary is radio
 	Sport     Sport
+}
+
+type BaseballState struct {
+	OnFirst  bool
+	OnSecond bool
+	OnThird  bool
+	Outs     int
+	Balls    int
+	Strikes  int
+	Batter   string
+	Pitcher  string
 }
 
 type StandingsRow struct {
@@ -60,6 +72,8 @@ type StandingsRow struct {
 
 type RecentResult struct {
 	Team     Team
+	Opponent Team
+	Home     bool
 	Result   string    // "W", "L", "T"
 	Record   string    // display string e.g. "W 6-4"
 	GameDate time.Time // for sorting

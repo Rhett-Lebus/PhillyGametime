@@ -57,7 +57,29 @@
       changed = true;
     }
     if (period && game.Status === 'Live') {
-      period.textContent = `${game.Period} - ${game.TimeLeft}`;
+      period.textContent = game.TimeLeft ? `${game.Period} - ${game.TimeLeft}` : game.Period;
+    }
+
+    const baseball = card.querySelector('.baseball-live');
+    if (baseball && game.Baseball) {
+      const states = {
+        first: game.Baseball.OnFirst,
+        second: game.Baseball.OnSecond,
+        third: game.Baseball.OnThird,
+      };
+      Object.entries(states).forEach(([baseName, occupied]) => {
+        const base = baseball.querySelector(`.base--${baseName}`);
+        if (base) base.classList.toggle('base--occupied', Boolean(occupied));
+      });
+
+      const count = baseball.querySelectorAll('.baseball-count strong');
+      if (count[0]) count[0].textContent = game.Baseball.Outs;
+      if (count[1]) count[1].textContent = game.Baseball.Balls;
+      if (count[2]) count[2].textContent = game.Baseball.Strikes;
+
+      const players = baseball.querySelectorAll('.baseball-players strong');
+      if (players[0] && game.Baseball.Batter) players[0].textContent = game.Baseball.Batter;
+      if (players[1] && game.Baseball.Pitcher) players[1].textContent = game.Baseball.Pitcher;
     }
     if (changed) {
       card.classList.add('score-updated');

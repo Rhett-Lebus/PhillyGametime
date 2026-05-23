@@ -57,6 +57,31 @@ type espnCompetition struct {
 	Competitors []espnCompetitor `json:"competitors"`
 	Broadcasts  []espnBroadcast  `json:"broadcasts"`
 	Status      espnStatus       `json:"status"`
+	Situation   espnSituation    `json:"situation"`
+}
+
+type espnSituation struct {
+	OnFirst  bool       `json:"onFirst"`
+	OnSecond bool       `json:"onSecond"`
+	OnThird  bool       `json:"onThird"`
+	Outs     int        `json:"outs"`
+	Balls    int        `json:"balls"`
+	Strikes  int        `json:"strikes"`
+	Batter   espnPlayer `json:"batter"`
+	Pitcher  espnPlayer `json:"pitcher"`
+}
+
+type espnPlayer struct {
+	DisplayName string `json:"displayName"`
+	ShortName   string `json:"shortName"`
+	FullName    string `json:"fullName"`
+	Name        string `json:"name"`
+	Athlete     struct {
+		DisplayName string `json:"displayName"`
+		ShortName   string `json:"shortName"`
+		FullName    string `json:"fullName"`
+		Name        string `json:"name"`
+	} `json:"athlete"`
 }
 
 type espnCompetitor struct {
@@ -577,14 +602,18 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 						continue
 					}
 
-					var phillyTeam models.Team
+					var phillyTeam, opponent models.Team
 					var phillyScore, oppScore int
+					home := false
 					if phillyKeywords[strings.ToLower(g.HomeTeam.City)] || phillyKeywords[strings.ToLower(g.HomeTeam.Name)] {
 						phillyTeam = g.HomeTeam
+						opponent = g.AwayTeam
 						phillyScore = g.HomeScore
 						oppScore = g.AwayScore
+						home = true
 					} else {
 						phillyTeam = g.AwayTeam
+						opponent = g.HomeTeam
 						phillyScore = g.AwayScore
 						oppScore = g.HomeScore
 					}
@@ -604,6 +633,8 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 						seen[g.ID] = true
 						results = append(results, models.RecentResult{
 							Team:     phillyTeam,
+							Opponent: opponent,
+							Home:     home,
 							Result:   result,
 							Record:   fmt.Sprintf("%s %d-%d", result, phillyScore, oppScore),
 							GameDate: g.StartTime,
@@ -693,6 +724,7 @@ func parseESPNEvent(ev espnEvent, sport models.Sport) (models.Game, bool) {
 	}
 
 	period, timeLeft := espnPeriod(sport, comp.Status)
+	baseball := espnBaseballState(sport, espnGameStatus(comp.Status), comp.Situation)
 
 	return models.Game{
 		ID:        ev.ID,
@@ -703,6 +735,7 @@ func parseESPNEvent(ev espnEvent, sport models.Sport) (models.Game, bool) {
 		Status:    espnGameStatus(comp.Status),
 		Period:    period,
 		TimeLeft:  timeLeft,
+		Baseball:  baseball,
 		StartTime: ev.Date.Time,
 		Venue:     comp.Venue.FullName,
 		City:      city,
@@ -798,6 +831,50 @@ func espnPeriod(sport models.Sport, s espnStatus) (period, timeLeft string) {
 	default:
 		return s.Type.ShortDetail, ""
 	}
+}
+
+func espnBaseballState(sport models.Sport, status models.GameStatus, situation espnSituation) *models.BaseballState {
+	if sport != models.MLB || status != models.StatusLive {
+		return nil
+	}
+
+	batter := espnPlayerName(situation.Batter)
+	pitcher := espnPlayerName(situation.Pitcher)
+	if !situation.OnFirst && !situation.OnSecond && !situation.OnThird &&
+		situation.Outs == 0 && situation.Balls == 0 && situation.Strikes == 0 &&
+		batter == "" && pitcher == "" {
+		return nil
+	}
+
+	return &models.BaseballState{
+		OnFirst:  situation.OnFirst,
+		OnSecond: situation.OnSecond,
+		OnThird:  situation.OnThird,
+		Outs:     situation.Outs,
+		Balls:    situation.Balls,
+		Strikes:  situation.Strikes,
+		Batter:   batter,
+		Pitcher:  pitcher,
+	}
+}
+
+func espnPlayerName(player espnPlayer) string {
+	for _, name := range []string{
+		player.DisplayName,
+		player.ShortName,
+		player.FullName,
+		player.Name,
+		player.Athlete.DisplayName,
+		player.Athlete.ShortName,
+		player.Athlete.FullName,
+		player.Athlete.Name,
+	} {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			return name
+		}
+	}
+	return ""
 }
 
 // phillyGameKey returns a stable key for deduplicating upcoming/result entries

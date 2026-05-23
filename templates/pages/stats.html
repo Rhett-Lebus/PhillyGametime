@@ -34,8 +34,14 @@
       <div class="recent-list">
         {{range .Recent}}
         <div class="recent-item" style="--team-color:{{.Team.Primary}}">
-          <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
-          <span>{{.Team.Name}}</span>
+          <div class="recent-logos">
+            <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
+            {{if .Opponent.Name}}<div class="result-logo result-logo--opponent">{{if .Opponent.LogoURL}}<img src="{{.Opponent.LogoURL}}" alt="{{.Opponent.City}} {{.Opponent.Name}} logo">{{else}}<span>{{.Opponent.Abbr}}</span>{{end}}</div>{{end}}
+          </div>
+          <span class="recent-matchup">
+            <strong>{{.Team.Name}}</strong>
+            {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
+          </span>
           <strong>{{.Record}}</strong>
         </div>
         {{else}}

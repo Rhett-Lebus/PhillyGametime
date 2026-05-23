@@ -11,7 +11,7 @@
       <div class="game-card-header">
         {{if eq .Status "Live"}}
           <span class="badge badge--live">Live</span>
-          <span class="game-period">{{.Period}} - {{.TimeLeft}}</span>
+          <span class="game-period">{{.Period}}{{if .TimeLeft}} - {{.TimeLeft}}{{end}}</span>
         {{else if eq .Status "Final"}}
           <span class="badge badge--final">Final</span>
           <span class="game-period">{{.Period}}</span>
@@ -34,6 +34,25 @@
           <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
         </div>
       </div>
+      {{with .Baseball}}
+      <div class="baseball-live">
+        <div class="bases-diamond" aria-label="Bases occupied">
+          <span class="base base--second {{if .OnSecond}}base--occupied{{end}}"></span>
+          <span class="base base--third {{if .OnThird}}base--occupied{{end}}"></span>
+          <span class="base base--first {{if .OnFirst}}base--occupied{{end}}"></span>
+          <span class="base base--home"></span>
+        </div>
+        <div class="baseball-count">
+          <span class="baseball-count__outs"><strong>{{.Outs}}</strong> Outs</span>
+          <span><strong>{{.Balls}}</strong> Balls</span>
+          <span><strong>{{.Strikes}}</strong> Strikes</span>
+        </div>
+        <div class="baseball-players">
+          {{if .Batter}}<span><small>At bat</small><strong>{{.Batter}}</strong></span>{{end}}
+          {{if .Pitcher}}<span><small>Pitching</small><strong>{{.Pitcher}}</strong></span>{{end}}
+        </div>
+      </div>
+      {{end}}
       <div class="game-broadcast">
         {{range $i, $b := .Broadcast}}
           {{if eq $i 0}}<span class="broadcast-primary">{{broadcastShort $b}}</span>

@@ -90,8 +90,17 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 			AwayTeam:  Mets,
 			HomeScore: 6,
 			AwayScore: 4,
-			Status:    models.StatusFinal,
-			Period:    "Final",
+			Status:    models.StatusLive,
+			Period:    "Top 7th",
+			Baseball: &models.BaseballState{
+				OnFirst: true,
+				OnThird: true,
+				Outs:    1,
+				Balls:   2,
+				Strikes: 1,
+				Batter:  "Bryce Harper",
+				Pitcher: "Kodai Senga",
+			},
 			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 13, 5, 0),
 			Venue:     "Citizens Bank Park",
 			City:      "Philadelphia, PA",
@@ -155,11 +164,11 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 
 func (s *MockStore) GetRecentResults() []models.RecentResult {
 	results := []models.RecentResult{
-		{Team: Eagles, Result: "L", Record: "L 17-24"},
-		{Team: Phillies, Result: "W", Record: "W 6-4"},
-		{Team: Sixers, Result: "W", Record: "W 112-103"},
-		{Team: Flyers, Result: "L", Record: "L 2-4"},
-		{Team: Union, Result: "L", Record: "L 0-1"},
+		{Team: Eagles, Opponent: Giants, Home: true, Result: "L", Record: "L 17-24"},
+		{Team: Phillies, Opponent: Mets, Home: true, Result: "W", Record: "W 6-4"},
+		{Team: Sixers, Opponent: Nets, Home: true, Result: "W", Record: "W 112-103"},
+		{Team: Flyers, Opponent: Penguins, Home: false, Result: "L", Record: "L 2-4"},
+		{Team: Union, Opponent: RedBulls, Home: false, Result: "L", Record: "L 0-1"},
 	}
 	filtered := make([]models.RecentResult, 0, len(results))
 	for _, result := range results {
