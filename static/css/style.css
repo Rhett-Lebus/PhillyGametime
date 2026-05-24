@@ -764,7 +764,7 @@ a { color: inherit; text-decoration: none; }
 }
 .recent-matchup {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   padding-top: 2px;
   line-height: 1.15;
 }
@@ -784,6 +784,9 @@ a { color: inherit; text-decoration: none; }
   font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
+}
+.recent-date {
+  color: rgba(226,232,240,.5);
 }
 .recent-record {
   justify-self: end;

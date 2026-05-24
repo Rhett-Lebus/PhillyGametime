@@ -64,6 +64,12 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 		"formatDateTime": func(t time.Time) string {
 			return data.PhillyTime(t).Format("Monday, Jan 2 - 3:04 PM MST")
 		},
+		"formatShortDate": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return data.PhillyTime(t).Format("Jan 2")
+		},
 		"recapSentences": recapSentences,
 		"broadcastShort": func(network string) string {
 			switch strings.ToLower(network) {

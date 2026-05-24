@@ -132,6 +132,7 @@
             <span class="recent-matchup">
               <strong>{{.Team.Name}}</strong>
               {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
+              {{with formatShortDate .GameDate}}<small class="recent-date">{{.}}</small>{{end}}
             </span>
             <strong class="recent-record">{{.Record}}</strong>
           </div>
@@ -142,7 +143,7 @@
     </section>
 
     <section class="sidebar-section">
-      <h3>Standings Snapshot</h3>
+      <h3>Standings</h3>
       <table class="standings-table">
         <thead><tr><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
         <tbody>

@@ -42,6 +42,7 @@
             <span class="recent-matchup">
               <strong>{{.Team.Name}}</strong>
               {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
+              {{with formatShortDate .GameDate}}<small class="recent-date">{{.}}</small>{{end}}
             </span>
             <strong class="recent-record">{{.Record}}</strong>
           </div>
