@@ -3,7 +3,7 @@
 (function () {
   const POLL_INTERVAL = 30000;
   const THEME_KEY = 'phillyGametimeTheme';
-  const DEFAULT_THEME = 'basic';
+  const DEFAULT_THEME = 'neon';
 
   function getStoredTheme() {
     try {
@@ -36,8 +36,6 @@
       storeTheme(select.value);
     });
   }
-
-  applyTheme(getStoredTheme());
 
   function updateCardDOM(game) {
     const card = document.querySelector(`[data-game-id="${game.ID}"]`);

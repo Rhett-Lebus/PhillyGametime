@@ -33,15 +33,20 @@
       </button>
     </form>
 
-    <label class="theme-picker" aria-label="Theme">
-      <span>Theme</span>
-      <select id="theme-select">
-        <option value="basic">Basic</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-        <option value="neon">Neon</option>
-      </select>
-    </label>
+    {{if .ShowThemePicker}}
+      <label class="theme-picker" aria-label="Theme">
+        <span>Theme</span>
+        <select id="theme-select">
+          <option value="basic">Basic</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="midnight">Midnight</option>
+          <option value="neon">Neon Logo</option>
+          <option value="neon-electric">Neon Electric</option>
+          <option value="neon-night">Neon Night</option>
+        </select>
+      </label>
+    {{end}}
   </div>
 </header>
 {{end}}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,15 +15,31 @@ import (
 )
 
 type Handler struct {
-	store   data.Store
-	bus     *events.Bus
-	funcMap template.FuncMap
+	store           data.Store
+	bus             *events.Bus
+	funcMap         template.FuncMap
+	showThemePicker bool
 }
 
 func New(store data.Store, bus *events.Bus) *Handler {
-	h := &Handler{store: store, bus: bus}
+	h := &Handler{
+		store:           store,
+		bus:             bus,
+		showThemePicker: shouldShowThemePicker(),
+	}
 	h.funcMap = h.buildFuncMap()
 	return h
+}
+
+func shouldShowThemePicker() bool {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("PHILLY_ENV")))
+	if env == "production" || env == "prod" {
+		return false
+	}
+	if os.Getenv("PHILLY_DATA") == "mock" || env == "local" || env == "dev" || env == "development" {
+		return true
+	}
+	return os.Getenv("PORT") == "" || os.Getenv("PORT") == "8080"
 }
 
 func (h *Handler) buildFuncMap() template.FuncMap {
@@ -209,12 +226,42 @@ func (h *Handler) render(w http.ResponseWriter, page string, data interface{}) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "base", h.withLayout(data)); err != nil {
 		http.Error(w, "render error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
 
+func (h *Handler) withLayout(data interface{}) interface{} {
+	switch v := data.(type) {
+	case HomeData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case ScoresData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case UpcomingData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case TeamsData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case StatsData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case TVData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	default:
+		return data
+	}
+}
+
+type LayoutData struct {
+	ShowThemePicker bool
+}
+
 type HomeData struct {
+	LayoutData
 	NavActive     string
 	Title         string
 	TodaysGames   []models.Game
@@ -224,24 +271,28 @@ type HomeData struct {
 }
 
 type ScoresData struct {
+	LayoutData
 	NavActive string
 	Title     string
 	Games     []models.Game
 }
 
 type UpcomingData struct {
+	LayoutData
 	NavActive string
 	Title     string
 	Games     []models.Game
 }
 
 type TeamsData struct {
+	LayoutData
 	NavActive string
 	Title     string
 	Teams     []models.Team
 }
 
 type StatsData struct {
+	LayoutData
 	NavActive string
 	Title     string
 	Standings []models.StandingsRow
@@ -249,6 +300,7 @@ type StatsData struct {
 }
 
 type TVData struct {
+	LayoutData
 	NavActive string
 	Title     string
 	Games     []models.Game

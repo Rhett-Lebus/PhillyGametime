@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -18,6 +19,38 @@ func TestFormatDateTimeUsesPhiladelphiaTime(t *testing.T) {
 
 	if got != want {
 		t.Fatalf("formatDateTime() = %q, want %q", got, want)
+	}
+}
+
+func TestShouldShowThemePickerInMockMode(t *testing.T) {
+	t.Setenv("PHILLY_DATA", "mock")
+	t.Setenv("PHILLY_ENV", "")
+	t.Setenv("PORT", "8081")
+
+	if !shouldShowThemePicker() {
+		t.Fatal("shouldShowThemePicker() = false, want true in mock mode")
+	}
+}
+
+func TestShouldHideThemePickerInProduction(t *testing.T) {
+	t.Setenv("PHILLY_DATA", "mock")
+	t.Setenv("PHILLY_ENV", "production")
+	t.Setenv("PORT", "8080")
+
+	if shouldShowThemePicker() {
+		t.Fatal("shouldShowThemePicker() = true, want false in production")
+	}
+}
+
+func TestShouldShowThemePickerOnDefaultLocalPort(t *testing.T) {
+	t.Setenv("PHILLY_DATA", "")
+	t.Setenv("PHILLY_ENV", "")
+	if err := os.Unsetenv("PORT"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !shouldShowThemePicker() {
+		t.Fatal("shouldShowThemePicker() = false, want true with default local port")
 	}
 }
 

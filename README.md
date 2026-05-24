@@ -13,7 +13,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 - Team directory
 - Stats/standings page
 - TV/stream guide with Philly-first broadcast sorting
-- Theme picker with Basic, Light, Dark, and Neon modes
+- Theme picker with Basic, Light, Dark, Midnight, and multiple Neon modes
 - Server-sent events endpoint for score and sport-specific event hooks
 - Mock data mode for local design/development previews
 

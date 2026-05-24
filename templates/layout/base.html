@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} | Philly Gametime</title>
   <script>
-    document.documentElement.dataset.theme = localStorage.getItem('phillyGametimeTheme') || 'basic';
+    {{if .ShowThemePicker}}
+      document.documentElement.dataset.theme = localStorage.getItem('phillyGametimeTheme') || 'neon';
+    {{else}}
+      document.documentElement.dataset.theme = 'neon';
+    {{end}}
   </script>
-  <link rel="stylesheet" href="/static/css/style.css?v=20260524-recent-recaps">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260524-prod-theme">
 </head>
 <body>
   {{template "header" .}}
@@ -17,7 +21,7 @@
   </main>
 
   {{template "footer" .}}
-  <script src="/static/js/app.js?v=20260524-recent-recaps"></script>
+  <script src="/static/js/app.js?v=20260524-prod-theme"></script>
 </body>
 </html>
 {{end}}
