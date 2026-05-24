@@ -64,6 +64,7 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 		"formatDateTime": func(t time.Time) string {
 			return data.PhillyTime(t).Format("Monday, Jan 2 - 3:04 PM MST")
 		},
+		"recapSentences": recapSentences,
 		"broadcastShort": func(network string) string {
 			switch strings.ToLower(network) {
 			case "nbc sports philadelphia", "nbc sports phil":
@@ -97,6 +98,97 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 			}
 		},
 	}
+}
+
+func recapSentences(summary string) []string {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return nil
+	}
+
+	sentences := make([]string, 0, 3)
+	start := 0
+	for i, r := range summary {
+		if r != '.' && r != '!' && r != '?' {
+			continue
+		}
+		end := i + len(string(r))
+		sentence := strings.TrimSpace(summary[start:end])
+		if sentence != "" {
+			sentences = append(sentences, splitLongRecapSentence(sentence)...)
+		}
+		start = end
+	}
+
+	if tail := strings.TrimSpace(summary[start:]); tail != "" {
+		sentences = append(sentences, splitLongRecapSentence(tail)...)
+	}
+	if len(sentences) == 0 {
+		return []string{summary}
+	}
+	return sentences
+}
+
+func splitLongRecapSentence(sentence string) []string {
+	const maxLine = 120
+	if len(sentence) <= maxLine {
+		return []string{sentence}
+	}
+
+	sentence = strings.TrimSpace(sentence)
+	trailing := ""
+	if strings.HasSuffix(sentence, ".") || strings.HasSuffix(sentence, "!") || strings.HasSuffix(sentence, "?") {
+		trailing = sentence[len(sentence)-1:]
+		sentence = strings.TrimSpace(sentence[:len(sentence)-1])
+	}
+
+	parts := splitRecapClauses(sentence, maxLine)
+	lines := make([]string, 0, len(parts))
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if i > 0 {
+			part = strings.TrimLeft(part, " ")
+		}
+		lines = append(lines, part)
+	}
+	if len(lines) == 0 {
+		return []string{sentence + trailing}
+	}
+	if trailing != "" {
+		lines[len(lines)-1] += trailing
+	}
+	return lines
+}
+
+func splitRecapClauses(sentence string, maxLine int) []string {
+	parts := strings.Split(sentence, ",")
+	clauses := make([]string, 0, len(parts))
+	current := ""
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if current == "" {
+			current = part
+			continue
+		}
+
+		candidate := current + ", " + part
+		if len(candidate) > maxLine {
+			clauses = append(clauses, current)
+			current = part
+			continue
+		}
+		current = candidate
+	}
+	if current != "" {
+		clauses = append(clauses, current)
+	}
+	return clauses
 }
 
 func (h *Handler) render(w http.ResponseWriter, page string, data interface{}) {

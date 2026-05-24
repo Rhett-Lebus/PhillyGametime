@@ -96,6 +96,9 @@
       const players = baseball.querySelectorAll('.baseball-players strong');
       if (players[0] && game.Baseball.Batter) players[0].textContent = game.Baseball.Batter;
       if (players[1] && game.Baseball.Pitcher) players[1].textContent = game.Baseball.Pitcher;
+
+      const pitcherK = baseball.querySelector('.baseball-pitcher-k');
+      if (pitcherK) pitcherK.textContent = game.Baseball.PitcherStrikeouts ? `${game.Baseball.PitcherStrikeouts} K` : '';
     }
     if (changed) {
       card.classList.add('score-updated');

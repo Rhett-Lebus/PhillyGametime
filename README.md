@@ -8,6 +8,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 
 - Home dashboard with today's Philly action, upcoming games, recent results, and standings
 - Live scores page
+- Live MLB game state with base runners, balls, strikes, outs, current batter, current pitcher, and the pitcher's current-game strikeouts
 - Upcoming schedule page
 - Team directory
 - Stats/standings page
@@ -58,6 +59,8 @@ Open:
 ```text
 http://localhost:8090
 ```
+
+Mock mode includes a live Phillies game with baseball count state and pitcher strikeouts so the live-game UI can be verified locally.
 
 To return to live data in the same shell:
 
@@ -112,7 +115,7 @@ Production runs on the shared AWS Lightsail instance at `52.1.97.78`, behind Cad
 Normal production deploy:
 
 ```powershell
-.\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\PhillyGametime-GPT\LightsailDefaultKey-us-east-1.pem" -Restart
+.\deploy-lightsail.ps1 -StaticIp "52.1.97.78" -PemPath "C:\Development\Repos\PhillyGametime\LightsailDefaultKey-us-east-1.pem" -Restart
 ```
 
 The script:
@@ -134,8 +137,8 @@ deploy/philly-gametime.service
 Upload it once:
 
 ```powershell
-scp -O -i "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" .\deploy\philly-gametime.service ubuntu@52.1.97.78:/tmp/philly-gametime.service
-ssh -i "C:\Development\Repos\HoustonTrio\LightsailDefaultKey-us-east-1.pem" ubuntu@52.1.97.78
+scp -O -i "C:\Development\Repos\PhillyGametime\LightsailDefaultKey-us-east-1.pem" .\deploy\philly-gametime.service ubuntu@52.1.97.78:/tmp/philly-gametime.service
+ssh -i "C:\Development\Repos\PhillyGametime\LightsailDefaultKey-us-east-1.pem" ubuntu@52.1.97.78
 ```
 
 Then on the server:

@@ -58,6 +58,12 @@ type espnCompetition struct {
 	Broadcasts  []espnBroadcast  `json:"broadcasts"`
 	Status      espnStatus       `json:"status"`
 	Situation   espnSituation    `json:"situation"`
+	Headlines   []espnHeadline   `json:"headlines"`
+}
+
+type espnHeadline struct {
+	ShortLinkText string `json:"shortLinkText"`
+	Description   string `json:"description"`
 }
 
 type espnSituation struct {
@@ -154,6 +160,28 @@ type espnStat struct {
 	Name         string  `json:"name"`
 	Value        float64 `json:"value"`
 	DisplayValue string  `json:"displayValue"`
+}
+
+type espnSummaryResp struct {
+	Boxscore espnBoxscore `json:"boxscore"`
+}
+
+type espnBoxscore struct {
+	Players []espnBoxscoreTeam `json:"players"`
+}
+
+type espnBoxscoreTeam struct {
+	Statistics []espnBoxscoreStatGroup `json:"statistics"`
+}
+
+type espnBoxscoreStatGroup struct {
+	Names    []string              `json:"names"`
+	Athletes []espnBoxscoreAthlete `json:"athletes"`
+}
+
+type espnBoxscoreAthlete struct {
+	Athlete espnPlayer `json:"athlete"`
+	Stats   []string   `json:"stats"`
 }
 
 // ── Sport config ──────────────────────────────────────────────────────────────
@@ -296,7 +324,8 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 		go func() {
 			defer wg.Done()
 			var sb espnScoreboard
-			if err := s.fetchJSON(cfg.ScoreboardURL, &sb); err != nil {
+			date := NowPhilly().Format("20060102")
+			if err := s.fetchJSON(cfg.ScoreboardURL+"?dates="+date, &sb); err != nil {
 				return
 			}
 			todayY, todayM, todayD := NowPhilly().Date()
@@ -304,6 +333,9 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 				g, ok := parseESPNEvent(ev, cfg.Sport)
 				if !ok || !isPhillyGame(g) {
 					continue
+				}
+				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" {
+					g.Baseball.PitcherStrikeouts = s.fetchPitcherStrikeouts(g.ID, g.Baseball.Pitcher)
 				}
 				gy, gm, gd := PhillyTime(g.StartTime).Date()
 				if gy != todayY || gm != todayM || gd != todayD {
@@ -631,12 +663,15 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 					mu.Lock()
 					if !seen[g.ID] {
 						seen[g.ID] = true
+						summary := recentResultSummary(ev, phillyTeam, opponent, phillyScore, oppScore)
 						results = append(results, models.RecentResult{
 							Team:     phillyTeam,
 							Opponent: opponent,
 							Home:     home,
 							Result:   result,
 							Record:   fmt.Sprintf("%s %d-%d", result, phillyScore, oppScore),
+							Summary:  summary,
+							Bullets:  recentResultBullets(summary, phillyTeam, opponent),
 							GameDate: g.StartTime,
 						})
 					}
@@ -674,6 +709,137 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────────────
+
+func recentResultSummary(ev espnEvent, phillyTeam, opponent models.Team, phillyScore, oppScore int) string {
+	if len(ev.Competitions) > 0 {
+		for _, headline := range ev.Competitions[0].Headlines {
+			if summary := cleanRecapText(headline.Description); summary != "" {
+				return summary
+			}
+			if summary := cleanRecapText(headline.ShortLinkText); summary != "" {
+				return summary
+			}
+		}
+	}
+
+	verb := "beat"
+	if phillyScore < oppScore {
+		verb = "fell to"
+	} else if phillyScore == oppScore {
+		verb = "tied"
+	}
+
+	return fmt.Sprintf("%s %s the %s %d-%d.", phillyTeam.Name, verb, opponent.Name, phillyScore, oppScore)
+}
+
+func recentResultBullets(summary string, phillyTeam, opponent models.Team) []string {
+	summary = cleanRecapText(summary)
+	if summary == "" {
+		return nil
+	}
+
+	summary = strings.TrimSuffix(summary, ".")
+	clauses := make([]string, 0, 3)
+	for _, chunk := range strings.Split(summary, ",") {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+
+		if strings.HasPrefix(strings.ToLower(chunk), "ending ") {
+			clauses = append(clauses, streakBullet(chunk, phillyTeam, opponent))
+			continue
+		}
+
+		for _, part := range splitHighlightClause(chunk) {
+			part = trimContext(part, phillyTeam)
+			if part != "" {
+				clauses = append(clauses, ensurePeriod(part))
+			}
+		}
+	}
+
+	bullets := make([]string, 0, 3)
+	seen := map[string]bool{}
+	for _, clause := range clauses {
+		key := strings.ToLower(clause)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		bullets = append(bullets, clause)
+		if len(bullets) == 3 {
+			break
+		}
+	}
+	if len(bullets) == 0 {
+		return []string{ensurePeriod(summary)}
+	}
+	return bullets
+}
+
+func splitHighlightClause(clause string) []string {
+	lower := strings.ToLower(clause)
+	if idx := strings.Index(lower, " and "); idx > 0 {
+		left := strings.TrimSpace(clause[:idx])
+		right := strings.TrimSpace(clause[idx+5:])
+		if startsWithCapitalizedWord(left) && startsWithCapitalizedWord(right) {
+			return []string{left, right}
+		}
+	}
+	return []string{clause}
+}
+
+func trimContext(clause string, phillyTeam models.Team) string {
+	for _, marker := range []string{
+		" as the " + phillyTeam.City + " " + phillyTeam.Name + " ",
+		" as the " + phillyTeam.Name + " ",
+	} {
+		if idx := strings.Index(strings.ToLower(clause), strings.ToLower(marker)); idx > 0 {
+			return strings.TrimSpace(clause[:idx])
+		}
+	}
+	return strings.TrimSpace(clause)
+}
+
+func streakBullet(clause string, phillyTeam, opponent models.Team) string {
+	text := strings.TrimSpace(strings.TrimPrefix(clause, "ending "))
+	text = strings.TrimSpace(strings.TrimPrefix(text, "Ending "))
+	possessive := opponent.Name + "'"
+	if strings.HasSuffix(opponent.Name, "s") {
+		possessive = opponent.Name + "'"
+	} else {
+		possessive = opponent.Name + "'s"
+	}
+	text = strings.ReplaceAll(text, "the "+possessive, opponent.City+"'s")
+	text = strings.ReplaceAll(text, possessive, opponent.City+"'s")
+	return ensurePeriod("The " + phillyTeam.Name + " ended " + text)
+}
+
+func startsWithCapitalizedWord(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	first := []rune(strings.Fields(s)[0])[0]
+	return first >= 'A' && first <= 'Z'
+}
+
+func ensurePeriod(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+		return s
+	}
+	return s + "."
+}
+
+func cleanRecapText(summary string) string {
+	summary = strings.TrimSpace(summary)
+	return strings.TrimLeft(summary, "\u2014\u2013- \t\r\n")
+}
 
 func (s *ESPNStore) GetTeams() []models.Team {
 	return []models.Team{Eagles, Phillies, Sixers, Flyers, Union}
@@ -858,6 +1024,54 @@ func espnBaseballState(sport models.Sport, status models.GameStatus, situation e
 		Batter:   batter,
 		Pitcher:  pitcher,
 	}
+}
+
+func (s *ESPNStore) fetchPitcherStrikeouts(eventID, pitcherName string) string {
+	var summary espnSummaryResp
+	url := fmt.Sprintf("https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=%s", eventID)
+	if err := s.fetchJSON(url, &summary); err != nil {
+		return ""
+	}
+	return pitcherStrikeouts(summary.Boxscore, pitcherName)
+}
+
+func pitcherStrikeouts(boxscore espnBoxscore, pitcherName string) string {
+	pitcherName = normalizePlayerName(pitcherName)
+	if pitcherName == "" {
+		return ""
+	}
+
+	for _, team := range boxscore.Players {
+		for _, group := range team.Statistics {
+			kIndex := statIndex(group.Names, "K")
+			if kIndex < 0 {
+				continue
+			}
+			for _, row := range group.Athletes {
+				if normalizePlayerName(espnPlayerName(row.Athlete)) != pitcherName {
+					continue
+				}
+				if kIndex < len(row.Stats) {
+					return strings.TrimSpace(row.Stats[kIndex])
+				}
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+func statIndex(names []string, want string) int {
+	for i, name := range names {
+		if strings.EqualFold(strings.TrimSpace(name), want) {
+			return i
+		}
+	}
+	return -1
+}
+
+func normalizePlayerName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 
 func espnPlayerName(player espnPlayer) string {

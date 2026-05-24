@@ -52,14 +52,15 @@ type Game struct {
 }
 
 type BaseballState struct {
-	OnFirst  bool
-	OnSecond bool
-	OnThird  bool
-	Outs     int
-	Balls    int
-	Strikes  int
-	Batter   string
-	Pitcher  string
+	OnFirst           bool
+	OnSecond          bool
+	OnThird           bool
+	Outs              int
+	Balls             int
+	Strikes           int
+	Batter            string
+	Pitcher           string
+	PitcherStrikeouts string
 }
 
 type StandingsRow struct {
@@ -77,5 +78,7 @@ type RecentResult struct {
 	Home     bool
 	Result   string    // "W", "L", "T"
 	Record   string    // display string e.g. "W 6-4"
+	Summary  string    // brief recap from provider or score data
+	Bullets  []string  // short recap bullets derived from Summary
 	GameDate time.Time // for sorting
 }

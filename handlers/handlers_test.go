@@ -32,3 +32,34 @@ func TestDayLabelUsesPhiladelphiaTime(t *testing.T) {
 		t.Fatalf("dayLabel() = %q, want Tomorrow", got)
 	}
 }
+
+func TestRecapSentencesSplitsReadableSentences(t *testing.T) {
+	got := recapSentences("Wheeler pitched six shutout innings. Stott drove in two runs.")
+	want := []string{"Wheeler pitched six shutout innings.", "Stott drove in two runs."}
+
+	if len(got) != len(want) {
+		t.Fatalf("recapSentences() returned %d sentences, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("recapSentences()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRecapSentencesBreaksLongCommaSeparatedRecap(t *testing.T) {
+	got := recapSentences("Zack Wheeler pitched six shutout innings and Bryson Stott hit a two-run single as the Philadelphia Phillies defeated Cleveland 3-0 on Saturday, ending the Guardians' seven-game winning streak.")
+	want := []string{
+		"Zack Wheeler pitched six shutout innings and Bryson Stott hit a two-run single as the Philadelphia Phillies defeated Cleveland 3-0 on Saturday",
+		"ending the Guardians' seven-game winning streak.",
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("recapSentences() returned %d chunks, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("recapSentences()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

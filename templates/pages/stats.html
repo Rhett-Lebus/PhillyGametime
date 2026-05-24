@@ -34,15 +34,18 @@
       <div class="recent-list">
         {{range .Recent}}
         <div class="recent-item" style="--team-color:{{.Team.Primary}}">
-          <div class="recent-logos">
-            <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
-            {{if .Opponent.Name}}<div class="result-logo result-logo--opponent">{{if .Opponent.LogoURL}}<img src="{{.Opponent.LogoURL}}" alt="{{.Opponent.City}} {{.Opponent.Name}} logo">{{else}}<span>{{.Opponent.Abbr}}</span>{{end}}</div>{{end}}
+          <div class="recent-main">
+            <div class="recent-logos">
+              <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
+              {{if .Opponent.Name}}<div class="result-logo result-logo--opponent">{{if .Opponent.LogoURL}}<img src="{{.Opponent.LogoURL}}" alt="{{.Opponent.City}} {{.Opponent.Name}} logo">{{else}}<span>{{.Opponent.Abbr}}</span>{{end}}</div>{{end}}
+            </div>
+            <span class="recent-matchup">
+              <strong>{{.Team.Name}}</strong>
+              {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
+            </span>
+            <strong class="recent-record">{{.Record}}</strong>
           </div>
-          <span class="recent-matchup">
-            <strong>{{.Team.Name}}</strong>
-            {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
-          </span>
-          <strong>{{.Record}}</strong>
+          {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
         </div>
         {{else}}
         <div class="empty-inline">No recent completed Philly games returned.</div>

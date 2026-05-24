@@ -58,7 +58,7 @@
         </div>
         <div class="baseball-players">
           {{if .Batter}}<span><small>At bat</small><strong>{{.Batter}}</strong></span>{{end}}
-          {{if .Pitcher}}<span><small>Pitching</small><strong>{{.Pitcher}}</strong></span>{{end}}
+          {{if .Pitcher}}<span class="baseball-pitcher"><small>Pitching</small><strong>{{.Pitcher}}</strong><em class="baseball-pitcher-k">{{if .PitcherStrikeouts}}{{.PitcherStrikeouts}} K{{end}}</em></span>{{end}}
         </div>
       </div>
       {{end}}
