@@ -23,6 +23,18 @@
     document.documentElement.dataset.theme = theme || DEFAULT_THEME;
   }
 
+  function updateHeaderHeight() {
+    const header = document.querySelector('.site-header');
+    if (!header) return;
+    document.documentElement.style.setProperty('--header-height', `${header.offsetHeight}px`);
+  }
+
+  function updateScheduleControlsHeight() {
+    const controls = document.querySelector('.schedule-controls');
+    if (!controls) return;
+    document.documentElement.style.setProperty('--schedule-controls-height', `${controls.offsetHeight}px`);
+  }
+
   function initThemePicker() {
     const select = document.getElementById('theme-select');
     if (!select) return;
@@ -35,6 +47,109 @@
       applyTheme(select.value);
       storeTheme(select.value);
     });
+  }
+
+  function initSchedulePicker() {
+    const select = document.getElementById('schedule-team-select');
+    const monthPicker = document.getElementById('schedule-month-picker');
+    const prevMonth = document.getElementById('schedule-month-prev');
+    const nextMonth = document.getElementById('schedule-month-next');
+    const sections = Array.from(document.querySelectorAll('[data-schedule-team]'));
+    if (!select || sections.length === 0) return;
+
+    const teamIDs = sections.map((section) => section.dataset.scheduleTeam);
+    const jumpToToday = (section) => {
+      const candidates = Array.from(section.querySelectorAll('.schedule-agenda-day--today, [data-schedule-today="true"], .schedule-day--today'));
+      const today = candidates.find((candidate) => candidate.offsetParent !== null) || candidates[0];
+      if (!today) return;
+      const scroll = () => {
+        const block = window.matchMedia('(max-width: 920px)').matches ? 'start' : 'center';
+        today.scrollIntoView({ block, behavior: 'smooth' });
+      };
+      requestAnimationFrame(scroll);
+      setTimeout(scroll, 150);
+      setTimeout(scroll, 500);
+    };
+
+    const monthElements = (section) => Array.from(section.querySelectorAll('[data-schedule-month]'));
+    const monthHasGame = (month) => Boolean(month.querySelector('.schedule-day--game'));
+
+    const populateMonths = (section) => {
+      if (!monthPicker) return '';
+      const months = monthElements(section);
+      const values = months.map((month) => month.dataset.scheduleMonth || '').filter(Boolean);
+      monthPicker.disabled = values.length === 0;
+      if (prevMonth) prevMonth.disabled = values.length === 0;
+      if (nextMonth) nextMonth.disabled = values.length === 0;
+      if (values.length > 0) {
+        monthPicker.min = values[0];
+        monthPicker.max = values[values.length - 1];
+      } else {
+        monthPicker.removeAttribute('min');
+        monthPicker.removeAttribute('max');
+      }
+      const currentWithGame = months.find((month) => month.dataset.currentMonth === 'true' && monthHasGame(month));
+      const firstWithGame = months.find(monthHasGame);
+      const current = currentWithGame || firstWithGame || months.find((month) => month.dataset.currentMonth === 'true') || months[0];
+      const selected = current ? current.dataset.scheduleMonth : '';
+      monthPicker.value = selected;
+      return selected;
+    };
+
+    const showMonth = (section, monthKey, scrollToday) => {
+      const months = monthElements(section);
+      const selected = months.some((month) => month.dataset.scheduleMonth === monthKey)
+        ? monthKey
+        : (months[0] ? months[0].dataset.scheduleMonth : '');
+      months.forEach((month) => {
+        month.hidden = month.dataset.scheduleMonth !== selected;
+      });
+      if (monthPicker && selected) monthPicker.value = selected;
+      if (scrollToday) jumpToToday(section);
+    };
+
+    const adjustMonth = (delta) => {
+      if (!monthPicker || !monthPicker.value) return;
+      const [year, month] = monthPicker.value.split('-').map(Number);
+      if (!year || !month) return;
+      const next = new Date(year, month - 1 + delta, 1);
+      const value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+      if ((monthPicker.min && value < monthPicker.min) || (monthPicker.max && value > monthPicker.max)) return;
+      monthPicker.value = value;
+      const activeSection = sections.find((section) => !section.hidden);
+      if (activeSection) showMonth(activeSection, value, true);
+    };
+
+    const showTeam = (teamID, updateHash, scrollToday) => {
+      const selected = teamIDs.includes(teamID) ? teamID : teamIDs[0];
+      select.value = selected;
+      let activeSection = null;
+      sections.forEach((section) => {
+        const active = section.dataset.scheduleTeam === selected;
+        section.hidden = !active;
+        if (active) activeSection = section;
+      });
+      updateScheduleControlsHeight();
+      if (updateHash) history.replaceState(null, '', `#${selected}`);
+      if (activeSection) {
+        const monthKey = populateMonths(activeSection);
+        showMonth(activeSection, monthKey, scrollToday);
+      }
+    };
+
+    const initial = window.location.hash.replace('#', '');
+    const selected = teamIDs.includes(initial) ? initial : 'all';
+    showTeam(selected, false, true);
+    select.addEventListener('change', () => showTeam(select.value, true, true));
+    if (monthPicker) {
+      monthPicker.addEventListener('change', () => {
+        const activeSection = sections.find((section) => !section.hidden);
+        if (activeSection) showMonth(activeSection, monthPicker.value, true);
+      });
+    }
+    if (prevMonth) prevMonth.addEventListener('click', () => adjustMonth(-1));
+    if (nextMonth) nextMonth.addEventListener('click', () => adjustMonth(1));
+    window.addEventListener('hashchange', () => showTeam(window.location.hash.replace('#', ''), false, true));
   }
 
   function ensureBaseballCurrentPlay(baseball) {
@@ -147,6 +262,56 @@
     }
   }
 
+  function scheduleScoreFor(game, phillyHome) {
+    if (!['Live', 'Final'].includes(game.Status)) return '';
+    const phillyScore = phillyHome ? game.HomeScore : game.AwayScore;
+    const oppScore = phillyHome ? game.AwayScore : game.HomeScore;
+    return `${phillyScore}-${oppScore}`;
+  }
+
+  function scheduleResultFor(game, phillyHome) {
+    if (game.Status !== 'Final') return '';
+    const phillyScore = phillyHome ? game.HomeScore : game.AwayScore;
+    const oppScore = phillyHome ? game.AwayScore : game.HomeScore;
+    if (phillyScore > oppScore) return 'W';
+    if (phillyScore < oppScore) return 'L';
+    return 'T';
+  }
+
+  function updateScheduleDOM(game) {
+    document.querySelectorAll(`.schedule-game[data-game-id="${game.ID}"]`).forEach((item) => {
+      const phillyHome = item.dataset.phillyHome === 'true';
+      const result = item.querySelector('.schedule-result');
+      const score = item.querySelector('.schedule-score');
+      const status = item.querySelector('.schedule-status');
+      const isLive = game.Status === 'Live';
+      const isFinal = game.Status === 'Final';
+
+      item.classList.toggle('schedule-game--live', isLive);
+      item.classList.toggle('schedule-game--final', isFinal);
+
+      const scoreText = scheduleScoreFor(game, phillyHome);
+      if (score) {
+        score.textContent = scoreText;
+        score.hidden = !scoreText;
+      }
+
+      const resultText = scheduleResultFor(game, phillyHome);
+      if (result) {
+        result.textContent = resultText;
+        result.hidden = !resultText;
+        result.classList.remove('schedule-result--win', 'schedule-result--loss', 'schedule-result--tie');
+        if (resultText === 'W') result.classList.add('schedule-result--win');
+        if (resultText === 'L') result.classList.add('schedule-result--loss');
+        if (resultText === 'T') result.classList.add('schedule-result--tie');
+      }
+
+      if (status) {
+        status.textContent = isLive ? 'Live' : (isFinal ? 'Final' : (game.Status || 'Scheduled'));
+      }
+    });
+  }
+
   function emit(name, detail) {
     document.dispatchEvent(new CustomEvent(`phillyGametime:${name}`, { detail }));
   }
@@ -164,6 +329,7 @@
       .then((response) => response.json())
       .then((games) => games.forEach((game) => {
         updateCardDOM(game);
+        updateScheduleDOM(game);
         emit('score_update', game);
       }))
       .catch(() => {});
@@ -178,7 +344,10 @@
     eventNames.forEach((eventName) => {
       source.addEventListener(eventName, (event) => {
         const game = JSON.parse(event.data);
-        if (eventName === 'score_update') updateCardDOM(game);
+        if (['score_update', 'game_start', 'game_end'].includes(eventName)) {
+          updateCardDOM(game);
+          updateScheduleDOM(game);
+        }
         if (eventName === 'game_end') refreshRecentOnGameEnd();
         emit(eventName, game);
       });
@@ -193,6 +362,14 @@
 
   connectEvents();
   initThemePicker();
+  updateHeaderHeight();
+  updateScheduleControlsHeight();
+  window.addEventListener('resize', () => {
+    updateHeaderHeight();
+    updateScheduleControlsHeight();
+  });
+  initSchedulePicker();
+  pollScores();
   setInterval(pollScores, POLL_INTERVAL);
 
   window.PhillyGametime = {

@@ -124,15 +124,16 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 
 	return []models.Game{
 		{
-			ID:        "upcoming-eagles-giants",
-			HomeTeam:  Eagles,
-			AwayTeam:  Giants,
-			Status:    models.StatusScheduled,
-			StartTime: DatePhilly(next(1).Year(), next(1).Month(), next(1).Day(), 16, 25, 0),
-			Venue:     "Lincoln Financial Field",
-			City:      "Philadelphia, PA",
-			Broadcast: []string{"FOX 29", "94.1 WIP"},
-			Sport:     models.NFL,
+			ID:          "upcoming-eagles-giants",
+			HomeTeam:    Eagles,
+			AwayTeam:    Giants,
+			Status:      models.StatusScheduled,
+			StartTime:   DatePhilly(next(1).Year(), next(1).Month(), next(1).Day(), 16, 25, 0),
+			Venue:       "Lincoln Financial Field",
+			City:        "Philadelphia, PA",
+			Broadcast:   []string{"FOX 29", "94.1 WIP"},
+			Sport:       models.NFL,
+			IsPreseason: true,
 		},
 		{
 			ID:        "upcoming-flyers-penguins",
@@ -167,6 +168,43 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 			Broadcast: []string{"TNT"},
 			Sport:     models.NBA,
 		},
+	}
+}
+
+func (s *MockStore) GetFullSchedules() []models.TeamSchedule {
+	upcoming := s.GetUpcomingGames()
+	now := NowPhilly()
+	return []models.TeamSchedule{
+		{Team: Eagles, Games: []models.Game{upcoming[0]}},
+		{Team: Phillies, Games: []models.Game{
+			{
+				ID:        "schedule-phillies-mets-final",
+				HomeTeam:  Phillies,
+				AwayTeam:  Mets,
+				HomeScore: 5,
+				AwayScore: 2,
+				Status:    models.StatusFinal,
+				StartTime: DatePhilly(now.Year(), now.Month(), now.Day()-3, 18, 40, 0),
+				Venue:     "Citizens Bank Park",
+				City:      "Philadelphia, PA",
+				Broadcast: []string{"NBC Sports Philadelphia"},
+				Sport:     models.MLB,
+			},
+			{
+				ID:        "schedule-phillies-mets",
+				HomeTeam:  Phillies,
+				AwayTeam:  Mets,
+				Status:    models.StatusScheduled,
+				StartTime: DatePhilly(NowPhilly().Year(), time.June, 1, 18, 40, 0),
+				Venue:     "Citizens Bank Park",
+				City:      "Philadelphia, PA",
+				Broadcast: []string{"NBC Sports Philadelphia"},
+				Sport:     models.MLB,
+			},
+		}},
+		{Team: Sixers, Games: []models.Game{upcoming[3]}},
+		{Team: Flyers, Games: []models.Game{upcoming[1]}},
+		{Team: Union, Games: []models.Game{upcoming[2]}},
 	}
 }
 
@@ -209,6 +247,9 @@ func (s *MockStore) GetStandings() []models.StandingsRow {
 
 func (s *MockStore) GetGameByID(id string) (*models.Game, bool) {
 	all := append(s.GetTodaysGames(), s.GetUpcomingGames()...)
+	for _, schedule := range s.GetFullSchedules() {
+		all = append(all, schedule.Games...)
+	}
 	for i := range all {
 		if all[i].ID == id {
 			return &all[i], true

@@ -115,6 +115,19 @@ func TestEnrichMLBGameAddsLivePlayByPlay(t *testing.T) {
 						"pitcher": {"id": 5, "fullName": "Kodai Senga"}
 					}
 				},
+				"boxscore": {
+					"teams": {
+						"away": {
+							"players": {
+								"ID5": {
+									"person": {"id": 5, "fullName": "Kodai Senga"},
+									"stats": {"pitching": {"strikeOuts": 7}}
+								}
+							}
+						},
+						"home": {"players": {}}
+					}
+				},
 				"plays": {
 					"currentPlay": {
 						"result": {"description": "Kyle Schwarber takes ball two."}
@@ -158,6 +171,9 @@ func TestEnrichMLBGameAddsLivePlayByPlay(t *testing.T) {
 	}
 	if got.Baseball.Batter != "Kyle Schwarber" || got.Baseball.Pitcher != "Kodai Senga" {
 		t.Fatalf("Batter/Pitcher = %q/%q", got.Baseball.Batter, got.Baseball.Pitcher)
+	}
+	if got.Baseball.PitcherStrikeouts != "7" {
+		t.Fatalf("PitcherStrikeouts = %q, want 7", got.Baseball.PitcherStrikeouts)
 	}
 	if !got.Baseball.OnFirst || !got.Baseball.OnThird || got.Baseball.OnSecond {
 		t.Fatalf("base occupancy = first:%v second:%v third:%v", got.Baseball.OnFirst, got.Baseball.OnSecond, got.Baseball.OnThird)
@@ -915,5 +931,46 @@ func TestPitcherStrikeoutsExtractsCurrentPitcherKColumn(t *testing.T) {
 	got := pitcherStrikeouts(boxscore, "Orion Kerkering")
 	if got != "2" {
 		t.Fatalf("pitcherStrikeouts() = %q, want %q", got, "2")
+	}
+}
+
+func TestMLBPitcherStrikeoutsUsesLiveFeedBoxscore(t *testing.T) {
+	k := 4
+	feed := mlbLiveFeedResp{}
+	feed.LiveData.Boxscore.Teams.Away.Players = map[string]mlbBoxscorePlayer{
+		"ID123": {
+			Person: mlbPerson{ID: 123, FullName: "Ranger Suarez"},
+			Stats: struct {
+				Pitching struct {
+					StrikeOuts *int `json:"strikeOuts"`
+				} `json:"pitching"`
+			}{
+				Pitching: struct {
+					StrikeOuts *int `json:"strikeOuts"`
+				}{StrikeOuts: &k},
+			},
+		},
+	}
+
+	got := mlbPitcherStrikeouts(feed, mlbPerson{ID: 123, FullName: "Ranger Suarez"})
+	if got != "4" {
+		t.Fatalf("mlbPitcherStrikeouts() = %q, want 4", got)
+	}
+}
+
+func TestHasCurrentOrFutureGame(t *testing.T) {
+	today := DatePhilly(2026, time.May, 27, 0, 0, 0)
+	games := []models.Game{
+		{StartTime: DatePhilly(2026, time.May, 20, 19, 0, 0)},
+		{StartTime: DatePhilly(2026, time.May, 27, 19, 0, 0)},
+	}
+
+	if !hasCurrentOrFutureGame(games, today) {
+		t.Fatal("hasCurrentOrFutureGame() = false, want true for today's game")
+	}
+
+	games = []models.Game{{StartTime: DatePhilly(2026, time.May, 20, 19, 0, 0)}}
+	if hasCurrentOrFutureGame(games, today) {
+		t.Fatal("hasCurrentOrFutureGame() = true, want false for completed-only schedule")
 	}
 }

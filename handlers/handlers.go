@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -64,6 +66,45 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 			}
 			return g.AwayTeam
 		},
+		"opponentTeam": func(g models.Game) models.Team {
+			if phillyCity[g.HomeTeam.City] {
+				return g.AwayTeam
+			}
+			return g.HomeTeam
+		},
+		"scheduleResult": func(g models.Game) string {
+			if g.Status != models.StatusFinal {
+				return ""
+			}
+			phillyScore, oppScore := phillyGameScores(g, phillyCity)
+			switch {
+			case phillyScore > oppScore:
+				return "W"
+			case phillyScore < oppScore:
+				return "L"
+			default:
+				return "T"
+			}
+		},
+		"scheduleResultClass": func(g models.Game) string {
+			switch {
+			case g.Status != models.StatusFinal:
+				return ""
+			case phillyGameWon(g, phillyCity):
+				return "schedule-result--win"
+			case phillyGameLost(g, phillyCity):
+				return "schedule-result--loss"
+			default:
+				return "schedule-result--tie"
+			}
+		},
+		"scheduleScore": func(g models.Game) string {
+			if g.Status != models.StatusFinal && g.Status != models.StatusLive {
+				return ""
+			}
+			phillyScore, oppScore := phillyGameScores(g, phillyCity)
+			return fmt.Sprintf("%d-%d", phillyScore, oppScore)
+		},
 		"dayLabel": func(t time.Time) string {
 			now := data.NowPhilly()
 			gameTime := data.PhillyTime(t)
@@ -86,6 +127,12 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 				return ""
 			}
 			return data.PhillyTime(t).Format("Jan 2")
+		},
+		"formatTime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return data.PhillyTime(t).Format("3:04 PM")
 		},
 		"broadcastShort": func(network string) string {
 			switch strings.ToLower(network) {
@@ -122,6 +169,23 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 	}
 }
 
+func phillyGameScores(g models.Game, phillyCity map[string]bool) (phillyScore, oppScore int) {
+	if phillyCity[g.HomeTeam.City] {
+		return g.HomeScore, g.AwayScore
+	}
+	return g.AwayScore, g.HomeScore
+}
+
+func phillyGameWon(g models.Game, phillyCity map[string]bool) bool {
+	phillyScore, oppScore := phillyGameScores(g, phillyCity)
+	return phillyScore > oppScore
+}
+
+func phillyGameLost(g models.Game, phillyCity map[string]bool) bool {
+	phillyScore, oppScore := phillyGameScores(g, phillyCity)
+	return phillyScore < oppScore
+}
+
 func (h *Handler) render(w http.ResponseWriter, page string, data interface{}) {
 	tmpl, err := template.New("").Funcs(h.funcMap).ParseFiles(
 		"templates/layout/base.html",
@@ -133,10 +197,13 @@ func (h *Handler) render(w http.ResponseWriter, page string, data interface{}) {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "base", h.withLayout(data)); err != nil {
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "base", h.withLayout(data)); err != nil {
 		http.Error(w, "render error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }
 
 func (h *Handler) withLayout(data interface{}) interface{} {
@@ -148,6 +215,9 @@ func (h *Handler) withLayout(data interface{}) interface{} {
 		v.ShowThemePicker = h.showThemePicker
 		return v
 	case UpcomingData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
+	case ScheduleData:
 		v.ShowThemePicker = h.showThemePicker
 		return v
 	case TeamsData:
@@ -190,6 +260,34 @@ type UpcomingData struct {
 	NavActive string
 	Title     string
 	Games     []models.Game
+}
+
+type ScheduleData struct {
+	LayoutData
+	NavActive string
+	Title     string
+	Schedules []ScheduleTeamView
+}
+
+type ScheduleTeamView struct {
+	Team     models.Team
+	Months   []ScheduleMonth
+	HasGames bool
+}
+
+type ScheduleMonth struct {
+	Key       string
+	Label     string
+	Lead      []int
+	Days      []ScheduleDay
+	IsCurrent bool
+	HasGames  bool
+}
+
+type ScheduleDay struct {
+	Date    time.Time
+	Games   []models.Game
+	IsToday bool
 }
 
 type TeamsData struct {
@@ -243,6 +341,110 @@ func (h *Handler) Upcoming(w http.ResponseWriter, r *http.Request) {
 		Title:     "Upcoming Games",
 		Games:     h.store.GetUpcomingGames(),
 	})
+}
+
+func (h *Handler) Schedule(w http.ResponseWriter, r *http.Request) {
+	h.render(w, "schedule", ScheduleData{
+		NavActive: "schedule",
+		Title:     "Full Schedule",
+		Schedules: buildScheduleViews(h.store.GetFullSchedules()),
+	})
+}
+
+func buildScheduleViews(schedules []models.TeamSchedule) []ScheduleTeamView {
+	today := data.NowPhilly()
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
+
+	views := make([]ScheduleTeamView, 0, len(schedules)+1)
+	allGames := make([]models.Game, 0)
+	for _, schedule := range schedules {
+		allGames = append(allGames, schedule.Games...)
+	}
+	views = append(views, buildScheduleView(models.Team{
+		ID:      "all",
+		Name:    "All Teams",
+		City:    "Philadelphia",
+		Abbr:    "ALL",
+		Primary: "#0f172a",
+	}, allGames, today))
+
+	for _, schedule := range schedules {
+		views = append(views, buildScheduleView(schedule.Team, schedule.Games, today))
+	}
+	return views
+}
+
+func buildScheduleView(team models.Team, teamGames []models.Game, today time.Time) ScheduleTeamView {
+	games := append([]models.Game(nil), teamGames...)
+	sort.Slice(games, func(i, j int) bool {
+		return games[i].StartTime.Before(games[j].StartTime)
+	})
+
+	byMonth := map[string][]models.Game{}
+	monthOrder := make([]time.Time, 0)
+	if len(games) > 0 {
+		currentMonth := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
+		minMonth := currentMonth
+		maxMonth := currentMonth
+		for _, game := range games {
+			gameDay := data.PhillyTime(game.StartTime)
+			monthStart := time.Date(gameDay.Year(), gameDay.Month(), 1, 0, 0, 0, 0, gameDay.Location())
+			key := monthStart.Format("2006-01")
+			byMonth[key] = append(byMonth[key], game)
+			if monthStart.Before(minMonth) {
+				minMonth = monthStart
+			}
+			if monthStart.After(maxMonth) {
+				maxMonth = monthStart
+			}
+		}
+		for month := minMonth; !month.After(maxMonth); month = month.AddDate(0, 1, 0) {
+			monthOrder = append(monthOrder, month)
+		}
+	}
+
+	months := make([]ScheduleMonth, 0, len(monthOrder))
+	for _, monthStart := range monthOrder {
+		key := monthStart.Format("2006-01")
+		months = append(months, buildScheduleMonth(monthStart, byMonth[key], today))
+	}
+	return ScheduleTeamView{Team: team, Months: months, HasGames: len(games) > 0}
+}
+
+func buildScheduleMonth(monthStart time.Time, games []models.Game, today time.Time) ScheduleMonth {
+	gamesByDay := map[string][]models.Game{}
+	for _, game := range games {
+		day := data.PhillyTime(game.StartTime)
+		key := day.Format("2006-01-02")
+		gamesByDay[key] = append(gamesByDay[key], game)
+	}
+	for key := range gamesByDay {
+		sort.Slice(gamesByDay[key], func(i, j int) bool {
+			return gamesByDay[key][i].StartTime.Before(gamesByDay[key][j].StartTime)
+		})
+	}
+
+	nextMonth := monthStart.AddDate(0, 1, 0)
+	daysInMonth := nextMonth.AddDate(0, 0, -1).Day()
+	days := make([]ScheduleDay, 0, daysInMonth)
+	for day := 1; day <= daysInMonth; day++ {
+		date := time.Date(monthStart.Year(), monthStart.Month(), day, 0, 0, 0, 0, monthStart.Location())
+		key := date.Format("2006-01-02")
+		days = append(days, ScheduleDay{
+			Date:    date,
+			Games:   gamesByDay[key],
+			IsToday: date.Equal(today),
+		})
+	}
+
+	return ScheduleMonth{
+		Key:       monthStart.Format("2006-01"),
+		Label:     monthStart.Format("January 2006"),
+		Lead:      make([]int, int(monthStart.Weekday())),
+		Days:      days,
+		IsCurrent: monthStart.Year() == today.Year() && monthStart.Month() == today.Month(),
+		HasGames:  len(games) > 0,
+	}
 }
 
 func (h *Handler) Teams(w http.ResponseWriter, r *http.Request) {

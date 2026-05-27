@@ -23,6 +23,7 @@
       </div>
       <div class="upcoming-info">
         <span>{{formatDateTime $g.StartTime}}</span>
+        {{if $g.IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
         <span>{{$g.Venue}}, {{$g.City}}</span>
       </div>
       <div class="upcoming-tv">

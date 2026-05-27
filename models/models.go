@@ -35,20 +35,26 @@ const (
 )
 
 type Game struct {
-	ID        string
-	HomeTeam  Team
-	AwayTeam  Team
-	HomeScore int
-	AwayScore int
-	Status    GameStatus
-	Period    string // "Q3", "4th", "7th Inning", "P2", "90'"
-	TimeLeft  string // "04:12"
-	Baseball  *BaseballState
-	StartTime time.Time
-	Venue     string
-	City      string
-	Broadcast []string // primary is TV, secondary is radio
-	Sport     Sport
+	ID          string
+	HomeTeam    Team
+	AwayTeam    Team
+	HomeScore   int
+	AwayScore   int
+	Status      GameStatus
+	Period      string // "Q3", "4th", "7th Inning", "P2", "90'"
+	TimeLeft    string // "04:12"
+	Baseball    *BaseballState
+	StartTime   time.Time
+	Venue       string
+	City        string
+	Broadcast   []string // primary is TV, secondary is radio
+	Sport       Sport
+	IsPreseason bool
+}
+
+type TeamSchedule struct {
+	Team  Team
+	Games []Game
 }
 
 type BaseballState struct {

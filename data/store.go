@@ -7,6 +7,7 @@ import "gametime/models"
 type Store interface {
 	GetTodaysGames() []models.Game
 	GetUpcomingGames() []models.Game
+	GetFullSchedules() []models.TeamSchedule
 	GetStandings() []models.StandingsRow
 	GetRecentResults() []models.RecentResult
 	GetTeams() []models.Team

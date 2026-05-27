@@ -95,7 +95,7 @@
     <section class="section">
       <div class="section-heading">
         <h2>Upcoming Games</h2>
-        <a href="/upcoming">Full schedule</a>
+        <a href="/schedule">Full schedule</a>
       </div>
       <div class="upcoming-list">
         {{range $g := .UpcomingGames}}
@@ -115,6 +115,7 @@
           </div>
           <div class="upcoming-info">
             <span>{{formatDateTime $g.StartTime}}</span>
+            {{if $g.IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
             <span>{{$g.Venue}}, {{$g.City}}</span>
           </div>
           <div class="upcoming-tv">

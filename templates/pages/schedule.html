@@ -1,0 +1,126 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Team schedules</p>
+  <h1>Full Schedule</h1>
+</section>
+
+<section class="section schedule-controls">
+  <label class="schedule-picker">
+    <span>Team</span>
+    <select id="schedule-team-select">
+      {{range .Schedules}}
+      <option value="{{.Team.ID}}">{{.Team.City}} {{.Team.Name}}</option>
+      {{end}}
+    </select>
+  </label>
+  <div class="schedule-picker schedule-picker--month">
+    <span>Month</span>
+    <div class="schedule-month-control">
+      <button type="button" class="schedule-month-button" id="schedule-month-prev" aria-label="Previous month">&lt;</button>
+      <input type="month" id="schedule-month-picker" aria-label="Schedule month">
+      <button type="button" class="schedule-month-button" id="schedule-month-next" aria-label="Next month">&gt;</button>
+    </div>
+  </div>
+</section>
+
+{{range .Schedules}}
+<section class="section schedule-section" id="{{.Team.ID}}" data-schedule-team="{{.Team.ID}}">
+  <div class="section-heading">
+    <h2>{{if eq .Team.ID "all"}}All Teams{{else}}{{.Team.City}} {{.Team.Name}}{{end}}</h2>
+    {{if ne .Team.ID "all"}}
+    <span class="sport-tag sport-tag--inline">{{.Team.Sport}}</span>
+    {{end}}
+  </div>
+  {{if not .HasGames}}
+  <div class="empty-state schedule-empty">No games scheduled.</div>
+  {{end}}
+  {{range .Months}}
+  <div class="schedule-month" data-schedule-month="{{.Key}}" data-month-label="{{.Label}}" data-current-month="{{if .IsCurrent}}true{{else}}false{{end}}" {{if not .IsCurrent}}hidden{{end}}>
+    <h3>{{.Label}}</h3>
+    <div class="schedule-weekdays" aria-hidden="true">
+      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+    </div>
+    <div class="schedule-calendar">
+      {{range .Lead}}<div class="schedule-day schedule-day--blank"></div>{{end}}
+      {{range .Days}}
+      <div class="schedule-day {{if .IsToday}}schedule-day--today{{end}} {{if .Games}}schedule-day--game{{end}}" {{if .IsToday}}data-schedule-today="true"{{end}}>
+        <span class="schedule-day-number">{{.Date.Format "2"}}</span>
+        {{range $g := .Games}}
+        <article class="schedule-game {{if eq $g.Status "Final"}}schedule-game--final{{end}} {{if eq $g.Status "Live"}}schedule-game--live{{end}}" data-game-id="{{$g.ID}}" data-philly-home="{{if isPhilly $g.HomeTeam}}true{{else}}false{{end}}" style="--team-color:{{(phillyTeam $g).Primary}}">
+          <div class="schedule-game__top">
+            <strong>{{formatTime $g.StartTime}}</strong>
+            {{if $g.IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
+          </div>
+          <div class="schedule-game__main">
+            <div class="schedule-game__logos">
+              {{$pt := phillyTeam $g}}
+              {{$ot := opponentTeam $g}}
+              <span>{{if $pt.LogoURL}}<img class="schedule-game__logo-img" src="{{$pt.LogoURL}}" alt="{{$pt.City}} {{$pt.Name}} logo" width="20" height="20" loading="lazy">{{else}}{{$pt.Abbr}}{{end}}</span>
+              <span class="schedule-game__logo-opponent">{{if $ot.LogoURL}}<img class="schedule-game__logo-img" src="{{$ot.LogoURL}}" alt="{{$ot.City}} {{$ot.Name}} logo" width="20" height="20" loading="lazy">{{else}}{{$ot.Abbr}}{{end}}</span>
+            </div>
+            <div>
+              <div class="schedule-game__matchup">{{vsAt $g}} {{$ot.Name}}</div>
+              <div class="schedule-game__result">
+                <span class="schedule-result {{scheduleResultClass $g}}" {{if not (scheduleResult $g)}}hidden{{end}}>{{scheduleResult $g}}</span>
+                <strong class="schedule-score" {{if not (scheduleScore $g)}}hidden{{end}}>{{scheduleScore $g}}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="schedule-game__meta">
+            <span class="schedule-status">{{if eq $g.Status "Final"}}Final{{else if eq $g.Status "Live"}}Live{{else}}{{$g.Status}}{{end}}</span>
+            {{if $g.Broadcast}}{{with index $g.Broadcast 0}}<span>{{broadcastShort .}}</span>{{end}}{{end}}
+          </div>
+        </article>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    <div class="schedule-agenda">
+      {{if not .HasGames}}
+      <div class="empty-state schedule-empty">No games scheduled this month.</div>
+      {{end}}
+      {{range .Days}}
+        {{if .Games}}
+        <div class="schedule-agenda-day {{if .IsToday}}schedule-agenda-day--today{{end}}">
+          <div class="schedule-agenda-date">
+            <strong>{{.Date.Format "Mon"}}</strong>
+            <span>{{.Date.Format "Jan 2"}}</span>
+          </div>
+          <div class="schedule-agenda-games">
+            {{range $g := .Games}}
+            <article class="schedule-game {{if eq $g.Status "Final"}}schedule-game--final{{end}} {{if eq $g.Status "Live"}}schedule-game--live{{end}}" data-game-id="{{$g.ID}}" data-philly-home="{{if isPhilly $g.HomeTeam}}true{{else}}false{{end}}" style="--team-color:{{(phillyTeam $g).Primary}}">
+              <div class="schedule-game__top">
+                <strong>{{formatTime $g.StartTime}}</strong>
+                {{if $g.IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
+              </div>
+              <div class="schedule-game__main">
+                <div class="schedule-game__logos">
+                  {{$pt := phillyTeam $g}}
+                  {{$ot := opponentTeam $g}}
+                  <span>{{if $pt.LogoURL}}<img class="schedule-game__logo-img" src="{{$pt.LogoURL}}" alt="{{$pt.City}} {{$pt.Name}} logo" width="20" height="20" loading="lazy">{{else}}{{$pt.Abbr}}{{end}}</span>
+                  <span class="schedule-game__logo-opponent">{{if $ot.LogoURL}}<img class="schedule-game__logo-img" src="{{$ot.LogoURL}}" alt="{{$ot.City}} {{$ot.Name}} logo" width="20" height="20" loading="lazy">{{else}}{{$ot.Abbr}}{{end}}</span>
+                </div>
+                <div>
+                  <div class="schedule-game__matchup">{{vsAt $g}} {{$ot.Name}}</div>
+                  <div class="schedule-game__result">
+                    <span class="schedule-result {{scheduleResultClass $g}}" {{if not (scheduleResult $g)}}hidden{{end}}>{{scheduleResult $g}}</span>
+                    <strong class="schedule-score" {{if not (scheduleScore $g)}}hidden{{end}}>{{scheduleScore $g}}</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="schedule-game__meta">
+                <span class="schedule-status">{{if eq $g.Status "Final"}}Final{{else if eq $g.Status "Live"}}Live{{else}}{{$g.Status}}{{end}}</span>
+                {{if $g.Broadcast}}{{with index $g.Broadcast 0}}<span>{{broadcastShort .}}</span>{{end}}{{end}}
+              </div>
+            </article>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+{{end}}

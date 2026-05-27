@@ -53,8 +53,17 @@ type espnScheduleResp struct {
 
 type espnEvent struct {
 	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	ShortName    string            `json:"shortName"`
 	Date         espnTime          `json:"date"`
+	Season       espnSeason        `json:"season"`
 	Competitions []espnCompetition `json:"competitions"`
+}
+
+type espnSeason struct {
+	Type int    `json:"type"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 type espnCompetition struct {
@@ -271,7 +280,26 @@ type mlbLiveFeedResp struct {
 				Pitcher mlbPerson `json:"pitcher"`
 			} `json:"defense"`
 		} `json:"linescore"`
+		Boxscore struct {
+			Teams struct {
+				Away mlbBoxscoreTeam `json:"away"`
+				Home mlbBoxscoreTeam `json:"home"`
+			} `json:"teams"`
+		} `json:"boxscore"`
 	} `json:"liveData"`
+}
+
+type mlbBoxscoreTeam struct {
+	Players map[string]mlbBoxscorePlayer `json:"players"`
+}
+
+type mlbBoxscorePlayer struct {
+	Person mlbPerson `json:"person"`
+	Stats  struct {
+		Pitching struct {
+			StrikeOuts *int `json:"strikeOuts"`
+		} `json:"pitching"`
+	} `json:"stats"`
 }
 
 type mlbPlay struct {
@@ -436,6 +464,11 @@ type gameCache struct {
 	expiresAt time.Time
 }
 
+type scheduleCache struct {
+	schedules []models.TeamSchedule
+	expiresAt time.Time
+}
+
 type standingsCache struct {
 	rows      []models.StandingsRow
 	expiresAt time.Time
@@ -451,6 +484,7 @@ type ESPNStore struct {
 	mu             sync.RWMutex
 	todayCache     gameCache
 	upcomingCache  gameCache
+	schedulesCache scheduleCache
 	standingsCache standingsCache
 	resultsCache   resultsCache
 	aiRecapCache   map[string]aiGameRecap
@@ -528,7 +562,7 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 					continue // ESPN scoreboards can include the full week's slate
 				}
 				g = s.enrichMLBGame(g)
-				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" {
+				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" && g.Baseball.PitcherStrikeouts == "" {
 					g.Baseball.PitcherStrikeouts = s.fetchPitcherStrikeouts(g.ID, g.Baseball.Pitcher)
 				}
 				mu.Lock()
@@ -689,6 +723,141 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 	s.upcomingCache = gameCache{games: games, expiresAt: time.Now().Add(5 * time.Minute)}
 	s.mu.Unlock()
 	return games
+}
+
+func (s *ESPNStore) GetFullSchedules() []models.TeamSchedule {
+	s.mu.RLock()
+	if time.Now().Before(s.schedulesCache.expiresAt) {
+		schedules := s.schedulesCache.schedules
+		s.mu.RUnlock()
+		return schedules
+	}
+	s.mu.RUnlock()
+
+	type result struct {
+		index    int
+		schedule models.TeamSchedule
+	}
+
+	results := make(chan result, len(sportConfigs))
+	var wg sync.WaitGroup
+	for i, cfg := range sportConfigs {
+		i, cfg := i, cfg
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- result{index: i, schedule: s.fetchTeamSchedule(cfg)}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	byIndex := map[int]models.TeamSchedule{}
+	for res := range results {
+		byIndex[res.index] = res.schedule
+	}
+
+	schedules := make([]models.TeamSchedule, 0, len(sportConfigs))
+	for i := range sportConfigs {
+		if sched, ok := byIndex[i]; ok {
+			schedules = append(schedules, sched)
+		}
+	}
+
+	s.mu.Lock()
+	s.schedulesCache = scheduleCache{schedules: schedules, expiresAt: time.Now().Add(30 * time.Minute)}
+	s.mu.Unlock()
+	return schedules
+}
+
+func (s *ESPNStore) fetchTeamSchedule(cfg sportCfg) models.TeamSchedule {
+	team := canonicalTeamForSport(cfg.Sport)
+	seen := map[string]bool{}
+	games := make([]models.Game, 0)
+	now := NowPhilly()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	addGame := func(ev espnEvent, includePast bool) {
+		g, ok := parseESPNEvent(ev, cfg.Sport)
+		if !ok || !isPhillyGame(g) || seen[g.ID] {
+			return
+		}
+		if !includePast && PhillyTime(g.StartTime).Before(startOfToday) {
+			return
+		}
+		seen[g.ID] = true
+		games = append(games, g)
+	}
+
+	for i, year := range scheduleSeasonYears(cfg.Sport, now) {
+		includePast := i == 0
+		for _, teamID := range cfg.PhillyTeamIDs {
+			url := cfg.ScheduleBase + teamID + "/schedule?season=" + year
+			var sched espnScheduleResp
+			if err := s.fetchJSON(url, &sched); err != nil {
+				continue
+			}
+			for _, ev := range sched.Events {
+				addGame(ev, includePast)
+			}
+		}
+	}
+
+	start := now.Format("20060102")
+	end := now.AddDate(1, 0, 0).Format("20060102")
+	url := cfg.ScoreboardURL + "?dates=" + start + "-" + end + "&limit=1000"
+	var sb espnScoreboard
+	if err := s.fetchJSON(url, &sb); err == nil {
+		for _, ev := range sb.Events {
+			addGame(ev, false)
+		}
+	}
+
+	sort.Slice(games, func(i, j int) bool {
+		return games[i].StartTime.Before(games[j].StartTime)
+	})
+	if !hasCurrentOrFutureGame(games, startOfToday) {
+		games = nil
+	}
+	return models.TeamSchedule{Team: team, Games: games}
+}
+
+func hasCurrentOrFutureGame(games []models.Game, startOfToday time.Time) bool {
+	for _, game := range games {
+		if !PhillyTime(game.StartTime).Before(startOfToday) {
+			return true
+		}
+	}
+	return false
+}
+
+func scheduleSeasonYears(sport models.Sport, now time.Time) []string {
+	year := now.Year()
+	switch sport {
+	case models.NBA, models.NHL:
+		if now.Month() >= time.July {
+			year++
+		}
+		return []string{strconv.Itoa(year), strconv.Itoa(year + 1)}
+	default:
+		return []string{strconv.Itoa(year), strconv.Itoa(year + 1)}
+	}
+}
+
+func canonicalTeamForSport(sport models.Sport) models.Team {
+	switch sport {
+	case models.NFL:
+		return Eagles
+	case models.MLB:
+		return Phillies
+	case models.NBA:
+		return Sixers
+	case models.NHL:
+		return Flyers
+	case models.MLS:
+		return Union
+	default:
+		return models.Team{Sport: sport}
+	}
 }
 
 func missingPhillyTeam(cfg sportCfg, nextByKey map[string]*models.Game) bool {
@@ -1625,6 +1794,9 @@ func (s *ESPNStore) GetTeams() []models.Team {
 
 func (s *ESPNStore) GetGameByID(id string) (*models.Game, bool) {
 	all := append(s.GetTodaysGames(), s.GetUpcomingGames()...)
+	for _, schedule := range s.GetFullSchedules() {
+		all = append(all, schedule.Games...)
+	}
 	for i := range all {
 		if all[i].ID == id {
 			return &all[i], true
@@ -1671,21 +1843,31 @@ func parseESPNEvent(ev espnEvent, sport models.Sport) (models.Game, bool) {
 	baseball := espnBaseballState(sport, espnGameStatus(comp.Status), comp.Situation)
 
 	return models.Game{
-		ID:        ev.ID,
-		HomeTeam:  espnToTeam(home.Team, sport),
-		AwayTeam:  espnToTeam(away.Team, sport),
-		HomeScore: homeScore,
-		AwayScore: awayScore,
-		Status:    espnGameStatus(comp.Status),
-		Period:    period,
-		TimeLeft:  timeLeft,
-		Baseball:  baseball,
-		StartTime: ev.Date.Time,
-		Venue:     comp.Venue.FullName,
-		City:      city,
-		Broadcast: broadcasts,
-		Sport:     sport,
+		ID:          ev.ID,
+		HomeTeam:    espnToTeam(home.Team, sport),
+		AwayTeam:    espnToTeam(away.Team, sport),
+		HomeScore:   homeScore,
+		AwayScore:   awayScore,
+		Status:      espnGameStatus(comp.Status),
+		Period:      period,
+		TimeLeft:    timeLeft,
+		Baseball:    baseball,
+		StartTime:   ev.Date.Time,
+		Venue:       comp.Venue.FullName,
+		City:        city,
+		Broadcast:   broadcasts,
+		Sport:       sport,
+		IsPreseason: espnIsPreseason(ev),
 	}, true
+}
+
+func espnIsPreseason(ev espnEvent) bool {
+	for _, value := range []string{ev.Season.Slug, ev.Season.Name, ev.Name, ev.ShortName} {
+		if strings.Contains(strings.ToLower(value), "preseason") {
+			return true
+		}
+	}
+	return ev.Season.Type == 1
 }
 
 func espnToTeam(t espnTeam, sport models.Sport) models.Team {
@@ -1838,6 +2020,7 @@ func (s *ESPNStore) enrichMLBGame(g models.Game) models.Game {
 		g.Baseball.OnThird = linescore.Offense.Third.ID != 0
 		g.Baseball.Batter = strings.TrimSpace(linescore.Offense.Batter.FullName)
 		g.Baseball.Pitcher = strings.TrimSpace(linescore.Defense.Pitcher.FullName)
+		g.Baseball.PitcherStrikeouts = mlbPitcherStrikeouts(feed, linescore.Defense.Pitcher)
 	}
 
 	current := feed.LiveData.Plays.CurrentPlay
@@ -1846,6 +2029,31 @@ func (s *ESPNStore) enrichMLBGame(g models.Game) models.Game {
 	}
 	g.Baseball.Plays = latestMLBPlays(feed.LiveData.Plays.AllPlays, 4)
 	return g
+}
+
+func mlbPitcherStrikeouts(feed mlbLiveFeedResp, pitcher mlbPerson) string {
+	if pitcher.ID == 0 && strings.TrimSpace(pitcher.FullName) == "" {
+		return ""
+	}
+	for _, team := range []mlbBoxscoreTeam{feed.LiveData.Boxscore.Teams.Away, feed.LiveData.Boxscore.Teams.Home} {
+		for _, player := range team.Players {
+			if !mlbPersonMatches(player.Person, pitcher) {
+				continue
+			}
+			if player.Stats.Pitching.StrikeOuts == nil {
+				return ""
+			}
+			return strconv.Itoa(*player.Stats.Pitching.StrikeOuts)
+		}
+	}
+	return ""
+}
+
+func mlbPersonMatches(a, b mlbPerson) bool {
+	if a.ID != 0 && b.ID != 0 {
+		return a.ID == b.ID
+	}
+	return normalizePlayerName(a.FullName) != "" && normalizePlayerName(a.FullName) == normalizePlayerName(b.FullName)
 }
 
 func (s *ESPNStore) findMLBGamePk(g models.Game) int {
