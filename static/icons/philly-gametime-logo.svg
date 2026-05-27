@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 44" role="img" aria-labelledby="title">
+  <title id="title">Philly Gametime</title>
+  <path fill="#f8fbff" d="M8 8h22c9 0 15 5 15 13S39 34 30 34h-8v-8h8c4 0 7-2 7-5s-3-5-7-5H18v22H8z"/>
+  <path fill="#f47a2a" d="M42 8h17v9H42z"/>
+  <path fill="#004c54" d="M42 19h17v8H42z"/>
+  <path fill="#e81828" d="M42 29h17v8H42z"/>
+  <path fill="none" stroke="rgba(255,255,255,.72)" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 5h25M20 39h40"/>
+</svg>

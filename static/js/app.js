@@ -37,6 +37,30 @@
     });
   }
 
+  function ensureBaseballCurrentPlay(baseball) {
+    let current = baseball.querySelector('.baseball-current-play');
+    if (current) return current;
+
+    current = document.createElement('div');
+    current.className = 'baseball-current-play';
+    const label = document.createElement('small');
+    label.textContent = 'Current play';
+    const text = document.createElement('strong');
+    current.append(label, text);
+    baseball.append(current);
+    return current;
+  }
+
+  function ensureBaseballPlays(baseball) {
+    let list = baseball.querySelector('.baseball-plays');
+    if (list) return list;
+
+    list = document.createElement('ul');
+    list.className = 'baseball-plays';
+    baseball.append(list);
+    return list;
+  }
+
   function updateCardDOM(game) {
     const card = document.querySelector(`[data-game-id="${game.ID}"]`);
     if (!card) return;
@@ -97,6 +121,25 @@
 
       const pitcherK = baseball.querySelector('.baseball-pitcher-k');
       if (pitcherK) pitcherK.textContent = game.Baseball.PitcherStrikeouts ? `${game.Baseball.PitcherStrikeouts} K` : '';
+
+      if (game.Baseball.CurrentPlay) {
+        const current = ensureBaseballCurrentPlay(baseball);
+        const text = current.querySelector('strong');
+        if (text) text.textContent = game.Baseball.CurrentPlay;
+      }
+
+      if (Array.isArray(game.Baseball.Plays) && game.Baseball.Plays.length > 0) {
+        const list = ensureBaseballPlays(baseball);
+        list.replaceChildren(...game.Baseball.Plays.map((play) => {
+          const item = document.createElement('li');
+          const inning = document.createElement('span');
+          inning.textContent = play.Inning ? `${play.HalfInning || ''} ${play.Inning}`.trim() : '';
+          const desc = document.createElement('strong');
+          desc.textContent = play.Description || '';
+          item.append(inning, desc);
+          return item;
+        }));
+      }
     }
     if (changed) {
       card.classList.add('score-updated');
@@ -106,6 +149,14 @@
 
   function emit(name, detail) {
     document.dispatchEvent(new CustomEvent(`phillyGametime:${name}`, { detail }));
+  }
+
+  let recentRefreshQueued = false;
+
+  function refreshRecentOnGameEnd() {
+    if (recentRefreshQueued || !document.querySelector('.recent-list')) return;
+    recentRefreshQueued = true;
+    setTimeout(() => window.location.reload(), 2500);
   }
 
   function pollScores() {
@@ -128,6 +179,7 @@
       source.addEventListener(eventName, (event) => {
         const game = JSON.parse(event.data);
         if (eventName === 'score_update') updateCardDOM(game);
+        if (eventName === 'game_end') refreshRecentOnGameEnd();
         emit(eventName, game);
       });
     });

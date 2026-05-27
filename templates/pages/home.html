@@ -62,6 +62,19 @@
               {{if .Batter}}<span><small>At bat</small><strong>{{.Batter}}</strong></span>{{end}}
               {{if .Pitcher}}<span class="baseball-pitcher"><small>Pitching</small><strong>{{.Pitcher}}</strong><em class="baseball-pitcher-k">{{if .PitcherStrikeouts}}{{.PitcherStrikeouts}} K{{end}}</em></span>{{end}}
             </div>
+            {{if .CurrentPlay}}
+            <div class="baseball-current-play">
+              <small>Current play</small>
+              <strong>{{.CurrentPlay}}</strong>
+            </div>
+            {{end}}
+            {{if .Plays}}
+            <ul class="baseball-plays">
+              {{range .Plays}}
+              <li><span>{{if .Inning}}{{.HalfInning}} {{.Inning}}{{end}}</span><strong>{{.Description}}</strong></li>
+              {{end}}
+            </ul>
+            {{end}}
           </div>
           {{end}}
 

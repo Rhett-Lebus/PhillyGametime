@@ -69,6 +69,46 @@ Remove-Item Env:\PHILLY_DATA
 go run .
 ```
 
+## Optional AI Recap Cleanup
+
+Post-game recent-result bullets can be cleaned up with the OpenAI API. This is optional; without an API key, the app uses the ESPN description and local fallback bullets.
+
+Recommended model: `gpt-4.1-mini` for lower latency. `gpt-5-nano` also works if available, but may be slower for this small cleanup task.
+
+```powershell
+$env:OPENAI_API_KEY="your_api_key"
+$env:OPENAI_MODEL="gpt-4.1-mini"
+$env:OPENAI_TIMEOUT_SECONDS="30"
+$env:AI_RECAP_CACHE_PATH="ai-recap-cache.json"
+$env:AI_RECAP_CACHE_MAX_ENTRIES="100"
+go run .
+```
+
+Environment variables:
+
+- `OPENAI_API_KEY`: enables OpenAI recap cleanup.
+- `OPENAI_MODEL`: model used for cleanup. Defaults to `gpt-5-nano` if unset.
+- `OPENAI_TIMEOUT_SECONDS`: timeout for OpenAI calls. Defaults to `30`.
+- `OPENAI_BASE_URL`: optional override for compatible APIs. Defaults to `https://api.openai.com/v1`.
+- `AI_RECAP_CACHE_PATH`: file path for persisted recap bullets. Defaults to `./ai-recap-cache.json`.
+- `AI_RECAP_CACHE_MAX_ENTRIES`: max successful game recaps to keep in the cache file. Defaults to `100`.
+
+Order of operations:
+
+1. Get completed game data and provider description from ESPN.
+2. Render the page immediately with ESPN/local fallback bullets.
+3. Start OpenAI cleanup in the background for only the recent-result cards that are actually displayed.
+4. Save successful cleaned bullets by ESPN game ID.
+5. Use cached cleaned bullets on the next refresh or app restart.
+
+The cache file does not grow forever by default. It keeps the newest `AI_RECAP_CACHE_MAX_ENTRIES` successful recaps and prunes older entries whenever it saves. Failed calls are not cached. To clear the cache while tuning prompts/models:
+
+```powershell
+Remove-Item .\ai-recap-cache.json -ErrorAction SilentlyContinue
+```
+
+Do not expose `OPENAI_API_KEY` in browser code or commit it to the repo.
+
 ## Build And Test
 
 ```powershell

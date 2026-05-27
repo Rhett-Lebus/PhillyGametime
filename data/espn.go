@@ -1,10 +1,15 @@
 package data
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,20 +96,58 @@ type espnPlayer struct {
 }
 
 type espnCompetitor struct {
-	HomeAway string   `json:"homeAway"`
-	Score    string   `json:"score"`
-	Team     espnTeam `json:"team"`
+	HomeAway string    `json:"homeAway"`
+	Score    espnScore `json:"score"`
+	Team     espnTeam  `json:"team"`
+}
+
+type espnScore string
+
+func (s *espnScore) UnmarshalJSON(b []byte) error {
+	raw := strings.TrimSpace(string(b))
+	if raw == "" || raw == "null" {
+		*s = ""
+		return nil
+	}
+	if strings.HasPrefix(raw, `"`) {
+		var value string
+		if err := json.Unmarshal(b, &value); err != nil {
+			return err
+		}
+		*s = espnScore(value)
+		return nil
+	}
+	var obj struct {
+		DisplayValue string  `json:"displayValue"`
+		Value        float64 `json:"value"`
+	}
+	if err := json.Unmarshal(b, &obj); err == nil {
+		if obj.DisplayValue != "" {
+			*s = espnScore(obj.DisplayValue)
+		} else {
+			*s = espnScore(strconv.Itoa(int(obj.Value)))
+		}
+		return nil
+	}
+	var value float64
+	if err := json.Unmarshal(b, &value); err != nil {
+		return err
+	}
+	*s = espnScore(strconv.Itoa(int(value)))
+	return nil
 }
 
 type espnTeam struct {
-	ID             string `json:"id"`
-	Location       string `json:"location"`
-	Name           string `json:"name"`
-	DisplayName    string `json:"displayName"`
-	Abbreviation   string `json:"abbreviation"`
-	Color          string `json:"color"`
-	AlternateColor string `json:"alternateColor"`
-	Logos          []struct {
+	ID               string `json:"id"`
+	Location         string `json:"location"`
+	Name             string `json:"name"`
+	Nickname         string `json:"nickname"`
+	DisplayName      string `json:"displayName"`
+	ShortDisplayName string `json:"shortDisplayName"`
+	Abbreviation     string `json:"abbreviation"`
+	Color            string `json:"color"`
+	AlternateColor   string `json:"alternateColor"`
+	Logos            []struct {
 		Href string `json:"href"`
 	} `json:"logos"`
 }
@@ -184,6 +227,115 @@ type espnBoxscoreAthlete struct {
 	Stats   []string   `json:"stats"`
 }
 
+type mlbScheduleResp struct {
+	Dates []struct {
+		Games []mlbScheduleGame `json:"games"`
+	} `json:"dates"`
+}
+
+type mlbScheduleGame struct {
+	GamePk   int      `json:"gamePk"`
+	GameDate espnTime `json:"gameDate"`
+	Teams    struct {
+		Away mlbScheduleTeam `json:"away"`
+		Home mlbScheduleTeam `json:"home"`
+	} `json:"teams"`
+}
+
+type mlbScheduleTeam struct {
+	Team struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"team"`
+}
+
+type mlbLiveFeedResp struct {
+	LiveData struct {
+		Plays struct {
+			AllPlays    []mlbPlay `json:"allPlays"`
+			CurrentPlay mlbPlay   `json:"currentPlay"`
+		} `json:"plays"`
+		Linescore struct {
+			Inning     int    `json:"currentInning"`
+			InningHalf string `json:"inningHalf"`
+			Outs       int    `json:"outs"`
+			Balls      int    `json:"balls"`
+			Strikes    int    `json:"strikes"`
+			Offense    struct {
+				First  mlbPerson `json:"first"`
+				Second mlbPerson `json:"second"`
+				Third  mlbPerson `json:"third"`
+				Batter mlbPerson `json:"batter"`
+			} `json:"offense"`
+			Defense struct {
+				Pitcher mlbPerson `json:"pitcher"`
+			} `json:"defense"`
+		} `json:"linescore"`
+	} `json:"liveData"`
+}
+
+type mlbPlay struct {
+	About struct {
+		Inning     int    `json:"inning"`
+		HalfInning string `json:"halfInning"`
+	} `json:"about"`
+	Result struct {
+		Description string `json:"description"`
+		Event       string `json:"event"`
+	} `json:"result"`
+	Matchup struct {
+		Batter  mlbPerson `json:"batter"`
+		Pitcher mlbPerson `json:"pitcher"`
+	} `json:"matchup"`
+	Count struct {
+		Balls   int `json:"balls"`
+		Strikes int `json:"strikes"`
+		Outs    int `json:"outs"`
+	} `json:"count"`
+}
+
+type mlbPerson struct {
+	ID       int    `json:"id"`
+	FullName string `json:"fullName"`
+}
+
+type aiGameRecap struct {
+	Bullets  []string `json:"bullets"`
+	CachedAt string   `json:"cachedAt,omitempty"`
+}
+
+type gameRecapFacts struct {
+	Sport              models.Sport
+	PhillyTeam         models.Team
+	Opponent           models.Team
+	Home               bool
+	PhillyScore        int
+	OppScore           int
+	Result             string
+	GameDate           time.Time
+	Venue              string
+	City               string
+	RawSummary         string
+	HasProviderSummary bool
+}
+
+type openAIResponse struct {
+	Output []struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"output"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type aiRecapCacheFile struct {
+	Version int                    `json:"version"`
+	Recaps  map[string]aiGameRecap `json:"recaps"`
+}
+
 // ── Sport config ──────────────────────────────────────────────────────────────
 
 type sportCfg struct {
@@ -228,7 +380,7 @@ var sportConfigs = []sportCfg{
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/soccer/usa.1/standings",
-		PhillyTeamIDs: []string{"16"},
+		PhillyTeamIDs: []string{"10739"},
 	},
 }
 
@@ -243,14 +395,38 @@ var phillyKeywords = map[string]bool{
 }
 
 func isPhillyESPN(t espnTeam) bool {
-	lc := func(s string) bool { return phillyKeywords[strings.ToLower(s)] }
-	return lc(t.Location) || lc(t.Name) || lc(t.DisplayName)
+	return isPhillyText(t.Location) ||
+		isPhillyText(t.Name) ||
+		isPhillyText(t.Nickname) ||
+		isPhillyText(t.DisplayName) ||
+		isPhillyText(t.ShortDisplayName) ||
+		strings.EqualFold(t.Abbreviation, "PHI") ||
+		strings.EqualFold(t.Abbreviation, "PHU")
 }
 
 func isPhillyGame(g models.Game) bool {
-	lc := func(s string) bool { return phillyKeywords[strings.ToLower(s)] }
-	check := func(t models.Team) bool { return lc(t.City) || lc(t.Name) }
-	return check(g.HomeTeam) || check(g.AwayTeam)
+	return isPhillyTeam(g.HomeTeam) || isPhillyTeam(g.AwayTeam)
+}
+
+func isPhillyTeam(t models.Team) bool {
+	return isPhillyText(t.City) ||
+		isPhillyText(t.Name) ||
+		strings.EqualFold(t.Abbr, "PHI") ||
+		strings.EqualFold(t.Abbr, "PHU")
+}
+
+func isPhillyText(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false
+	}
+	if phillyKeywords[s] {
+		return true
+	}
+	return strings.Contains(s, "philadelphia") ||
+		strings.Contains(s, "philly") ||
+		strings.Contains(s, "chester") ||
+		strings.Contains(s, "union")
 }
 
 // ── ESPN Store ────────────────────────────────────────────────────────────────
@@ -277,12 +453,25 @@ type ESPNStore struct {
 	upcomingCache  gameCache
 	standingsCache standingsCache
 	resultsCache   resultsCache
+	aiRecapCache   map[string]aiGameRecap
+	aiInFlight     map[string]bool
+	aiCachePath    string
 }
 
+var (
+	mlbScheduleURL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team"
+	mlbLiveFeedURL = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
+)
+
 func NewESPNStore() *ESPNStore {
-	return &ESPNStore{
-		client: &http.Client{Timeout: 5 * time.Second},
+	store := &ESPNStore{
+		client:       &http.Client{Timeout: 8 * time.Second},
+		aiRecapCache: map[string]aiGameRecap{},
+		aiInFlight:   map[string]bool{},
+		aiCachePath:  aiRecapCachePath(),
 	}
+	store.loadAIRecapCache()
+	return store
 }
 
 func (s *ESPNStore) fetchJSON(url string, v interface{}) error {
@@ -334,12 +523,13 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 				if !ok || !isPhillyGame(g) {
 					continue
 				}
-				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" {
-					g.Baseball.PitcherStrikeouts = s.fetchPitcherStrikeouts(g.ID, g.Baseball.Pitcher)
-				}
 				gy, gm, gd := PhillyTime(g.StartTime).Date()
 				if gy != todayY || gm != todayM || gd != todayD {
 					continue // ESPN scoreboards can include the full week's slate
+				}
+				g = s.enrichMLBGame(g)
+				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" {
+					g.Baseball.PitcherStrikeouts = s.fetchPitcherStrikeouts(g.ID, g.Baseball.Pitcher)
 				}
 				mu.Lock()
 				games = append(games, g)
@@ -422,9 +612,39 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 	}
 	wg.Wait()
 
-	// Phase 2: for teams with no game in the next 7 days, fall back to the
-	// full team schedule so off-season teams (e.g. Eagles in May) still appear
-	// once their schedule is published.
+	// Phase 2: for teams with no game in the next 7 days, ask the scoreboard
+	// for a wider range. ESPN's soccer team schedule can omit future fixtures,
+	// while the date-range scoreboard still includes them.
+	for _, cfg := range sportConfigs {
+		cfg := cfg
+		if !missingPhillyTeam(cfg, nextByKey) {
+			continue
+		}
+		start := now.AddDate(0, 0, 1).Format("20060102")
+		end := now.AddDate(1, 0, 0).Format("20060102")
+		url := cfg.ScoreboardURL + "?dates=" + start + "-" + end + "&limit=1000"
+		var sb espnScoreboard
+		if err := s.fetchJSON(url, &sb); err != nil {
+			continue
+		}
+		for _, ev := range sb.Events {
+			g, ok := parseESPNEvent(ev, cfg.Sport)
+			if !ok || !isPhillyGame(g) || !PhillyTime(g.StartTime).After(now) {
+				continue
+			}
+			key := phillyGameKey(g)
+			mu.Lock()
+			if nextByKey[key] == nil || g.StartTime.Before(nextByKey[key].StartTime) {
+				gc := g
+				nextByKey[key] = &gc
+			}
+			mu.Unlock()
+		}
+	}
+
+	// Phase 3: for teams still missing, fall back to the full team schedule so
+	// off-season teams (e.g. Eagles in May) still appear once their schedule is
+	// published.
 	year := now.Format("2006")
 	for _, cfg := range sportConfigs {
 		for _, teamID := range cfg.PhillyTeamIDs {
@@ -471,6 +691,15 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 	return games
 }
 
+func missingPhillyTeam(cfg sportCfg, nextByKey map[string]*models.Game) bool {
+	for _, teamID := range cfg.PhillyTeamIDs {
+		if nextByKey[string(cfg.Sport)+":"+teamID] == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ── Standings ─────────────────────────────────────────────────────────────────
 
 func (s *ESPNStore) GetStandings() []models.StandingsRow {
@@ -482,8 +711,6 @@ func (s *ESPNStore) GetStandings() []models.StandingsRow {
 	}
 	s.mu.RUnlock()
 
-	// Only show standings for teams that have an upcoming game — this keeps
-	// off-season teams hidden and eliminated teams out after season end.
 	activeKeys := s.activePhillyTeamKeys()
 	var mu sync.Mutex
 	rows := make([]models.StandingsRow, 0)
@@ -509,6 +736,9 @@ func (s *ESPNStore) GetStandings() []models.StandingsRow {
 					continue
 				}
 				row := standingsEntryToRow(entry, cfg.Sport)
+				if cfg.Sport == models.MLS {
+					row = s.withSoccerHomeAwaySplits(row, cfg, entry.Team.ID)
+				}
 				mu.Lock()
 				rows = append(rows, row)
 				mu.Unlock()
@@ -525,6 +755,79 @@ func (s *ESPNStore) GetStandings() []models.StandingsRow {
 	s.standingsCache = standingsCache{rows: rows, expiresAt: time.Now().Add(1 * time.Hour)}
 	s.mu.Unlock()
 	return rows
+}
+
+func (s *ESPNStore) withSoccerHomeAwaySplits(row models.StandingsRow, cfg sportCfg, teamID string) models.StandingsRow {
+	if teamID == "" || cfg.ScheduleBase == "" {
+		return row
+	}
+
+	year := NowPhilly().Format("2006")
+	url := cfg.ScheduleBase + teamID + "/schedule?season=" + year
+	var sched espnScheduleResp
+	if err := s.fetchJSON(url, &sched); err != nil {
+		return row
+	}
+
+	hw, hl, ht := 0, 0, 0
+	aw, al, at := 0, 0, 0
+	for _, ev := range sched.Events {
+		if len(ev.Competitions) == 0 {
+			continue
+		}
+		comp := ev.Competitions[0]
+		if espnGameStatus(comp.Status) != models.StatusFinal {
+			continue
+		}
+
+		var team, opponent espnCompetitor
+		found := false
+		for _, competitor := range comp.Competitors {
+			if competitor.Team.ID == teamID {
+				team = competitor
+				found = true
+			} else {
+				opponent = competitor
+			}
+		}
+		if !found {
+			continue
+		}
+
+		teamScore, _ := strconv.Atoi(string(team.Score))
+		oppScore, _ := strconv.Atoi(string(opponent.Score))
+		home := team.HomeAway == "home"
+		switch {
+		case teamScore > oppScore:
+			if home {
+				hw++
+			} else {
+				aw++
+			}
+		case teamScore < oppScore:
+			if home {
+				hl++
+			} else {
+				al++
+			}
+		default:
+			if home {
+				ht++
+			} else {
+				at++
+			}
+		}
+	}
+
+	if hw+hl+ht > 0 {
+		row.Home = fmt.Sprintf("%d-%d-%d", hw, hl, ht)
+		row.HomeDiff = hw - hl
+	}
+	if aw+al+at > 0 {
+		row.Away = fmt.Sprintf("%d-%d-%d", aw, al, at)
+		row.AwayDiff = aw - al
+	}
+	return row
 }
 
 // flattenStandingsEntries walks ESPN's nested group/children structure.
@@ -562,10 +865,13 @@ func standingsEntryToRow(entry espnStandingsEntry, sport models.Sport) models.St
 
 	w := intStat("wins")
 	l := intStat("losses")
+	t := intStat("ties", "draws")
 	hw := intStat("homeWins", "homeWin")
 	hl := intStat("homeLosses", "homeLoss")
+	ht := intStat("homeTies", "homeDraws")
 	rw := intStat("roadWins", "awayWins", "roadWin")
 	rl := intStat("roadLosses", "awayLosses", "roadLoss")
+	rt := intStat("roadTies", "awayTies", "roadDraws", "awayDraws")
 
 	// NHL OT losses
 	otl := intStat("otLosses", "overtimeLosses")
@@ -577,6 +883,10 @@ func standingsEntryToRow(entry espnStandingsEntry, sport models.Sport) models.St
 		record = fmt.Sprintf("%d-%d-%d", w, l, otl)
 		homeStr = fmt.Sprintf("%d-%d-%d", hw, hl, hotl)
 		awayStr = fmt.Sprintf("%d-%d-%d", rw, rl, rotl)
+	} else if sport == models.MLS {
+		record = fmt.Sprintf("%d-%d-%d", w, l, t)
+		homeStr = fmt.Sprintf("%d-%d-%d", hw, hl, ht)
+		awayStr = fmt.Sprintf("%d-%d-%d", rw, rl, rt)
 	} else {
 		record = fmt.Sprintf("%d-%d", w, l)
 		homeStr = fmt.Sprintf("%d-%d", hw, hl)
@@ -602,13 +912,18 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 	if time.Now().Before(s.resultsCache.expiresAt) {
 		results := s.resultsCache.results
 		s.mu.RUnlock()
-		return results
+		return s.applyCachedAIRecaps(results)
 	}
 	s.mu.RUnlock()
 
-	activeKeys := s.activePhillyTeamKeys()
+	type recentCandidate struct {
+		gameID string
+		result models.RecentResult
+		facts  gameRecapFacts
+	}
+
 	var mu sync.Mutex
-	results := make([]models.RecentResult, 0)
+	candidates := make([]recentCandidate, 0)
 	seen := map[string]bool{}
 	var wg sync.WaitGroup
 	now := NowPhilly()
@@ -618,7 +933,7 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 		if !isInSeason(cfg.Sport) {
 			continue
 		}
-		for daysBack := 1; daysBack <= 14; daysBack++ {
+		for daysBack := 0; daysBack <= 14; daysBack++ {
 			date := now.AddDate(0, 0, -daysBack).Format("20060102")
 			wg.Add(1)
 			go func() {
@@ -637,7 +952,7 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 					var phillyTeam, opponent models.Team
 					var phillyScore, oppScore int
 					home := false
-					if phillyKeywords[strings.ToLower(g.HomeTeam.City)] || phillyKeywords[strings.ToLower(g.HomeTeam.Name)] {
+					if isPhillyTeam(g.HomeTeam) {
 						phillyTeam = g.HomeTeam
 						opponent = g.AwayTeam
 						phillyScore = g.HomeScore
@@ -649,32 +964,55 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 						phillyScore = g.AwayScore
 						oppScore = g.HomeScore
 					}
-					if !activeKeys[string(phillyTeam.Sport)+":"+phillyTeam.ID] {
-						continue
-					}
 
-					result := "W"
+					resultCode := "W"
 					if phillyScore < oppScore {
-						result = "L"
+						resultCode = "L"
 					} else if phillyScore == oppScore {
-						result = "T"
+						resultCode = "T"
 					}
 
 					mu.Lock()
-					if !seen[g.ID] {
-						seen[g.ID] = true
-						summary := recentResultSummary(ev, phillyTeam, opponent, phillyScore, oppScore)
-						results = append(results, models.RecentResult{
-							Team:     phillyTeam,
-							Opponent: opponent,
-							Home:     home,
-							Result:   result,
-							Record:   fmt.Sprintf("%s %d-%d", result, phillyScore, oppScore),
-							Summary:  summary,
-							Bullets:  recentResultBullets(summary, phillyTeam, opponent),
-							GameDate: g.StartTime,
-						})
+					if seen[g.ID] {
+						mu.Unlock()
+						continue
 					}
+					seen[g.ID] = true
+					mu.Unlock()
+
+					summary, hasProviderSummary := recentResultSummary(ev, phillyTeam, opponent, phillyScore, oppScore)
+					result := models.RecentResult{
+						GameID:   g.ID,
+						Team:     phillyTeam,
+						Opponent: opponent,
+						Home:     home,
+						Result:   resultCode,
+						Record:   fmt.Sprintf("%s %d-%d", resultCode, phillyScore, oppScore),
+						Summary:  summary,
+						Bullets:  recentResultBullets(summary, phillyTeam, opponent),
+						GameDate: g.StartTime,
+					}
+					facts := gameRecapFacts{
+						Sport:              cfg.Sport,
+						PhillyTeam:         phillyTeam,
+						Opponent:           opponent,
+						Home:               home,
+						PhillyScore:        phillyScore,
+						OppScore:           oppScore,
+						Result:             resultCode,
+						GameDate:           g.StartTime,
+						Venue:              g.Venue,
+						City:               g.City,
+						RawSummary:         summary,
+						HasProviderSummary: hasProviderSummary,
+					}
+
+					mu.Lock()
+					candidates = append(candidates, recentCandidate{
+						gameID: g.ID,
+						result: result,
+						facts:  facts,
+					})
 					mu.Unlock()
 				}
 			}()
@@ -682,21 +1020,24 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 	}
 	wg.Wait()
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].GameDate.After(results[j].GameDate)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].result.GameDate.After(candidates[j].result.GameDate)
 	})
 
-	// Keep only the most recent result per Philly team.
-	byTeam := map[string]models.RecentResult{}
-	for _, r := range results {
+	// Keep only the most recent result per Philly team before doing optional
+	// AI cleanup, so we only call OpenAI for results that are actually shown.
+	byTeam := map[string]recentCandidate{}
+	for _, candidate := range candidates {
+		r := candidate.result
 		key := string(r.Team.Sport) + ":" + r.Team.ID
 		if _, exists := byTeam[key]; !exists {
-			byTeam[key] = r
+			byTeam[key] = candidate
 		}
 	}
-	results = results[:0]
-	for _, r := range byTeam {
-		results = append(results, r)
+	results := make([]models.RecentResult, 0, len(byTeam))
+	for _, candidate := range byTeam {
+		result := s.applyCachedOrQueueAIRecap(candidate.gameID, candidate.result, candidate.facts)
+		results = append(results, result)
 	}
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].GameDate.After(results[j].GameDate)
@@ -708,16 +1049,39 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 	return results
 }
 
+func (s *ESPNStore) InvalidateRecentResults() {
+	s.mu.Lock()
+	s.resultsCache = resultsCache{}
+	s.mu.Unlock()
+}
+
+func (s *ESPNStore) applyCachedAIRecaps(results []models.RecentResult) []models.RecentResult {
+	if len(results) == 0 || os.Getenv("OPENAI_API_KEY") == "" {
+		return results
+	}
+	updated := make([]models.RecentResult, len(results))
+	copy(updated, results)
+	for i := range updated {
+		if updated[i].GameID == "" {
+			continue
+		}
+		if cached, ok := s.cachedAIRecap(updated[i].GameID); ok {
+			updated[i] = applyAIRecap(updated[i], cached)
+		}
+	}
+	return updated
+}
+
 // ── Misc ──────────────────────────────────────────────────────────────────────
 
-func recentResultSummary(ev espnEvent, phillyTeam, opponent models.Team, phillyScore, oppScore int) string {
+func recentResultSummary(ev espnEvent, phillyTeam, opponent models.Team, phillyScore, oppScore int) (string, bool) {
 	if len(ev.Competitions) > 0 {
 		for _, headline := range ev.Competitions[0].Headlines {
 			if summary := cleanRecapText(headline.Description); summary != "" {
-				return summary
+				return summary, true
 			}
 			if summary := cleanRecapText(headline.ShortLinkText); summary != "" {
-				return summary
+				return summary, true
 			}
 		}
 	}
@@ -729,7 +1093,23 @@ func recentResultSummary(ev espnEvent, phillyTeam, opponent models.Team, phillyS
 		verb = "tied"
 	}
 
-	return fmt.Sprintf("%s %s the %s %d-%d.", phillyTeam.Name, verb, opponent.Name, phillyScore, oppScore)
+	return fmt.Sprintf("%s %s the %s %d-%d.", phillyTeam.Name, verb, opponent.Name, phillyScore, oppScore), false
+}
+
+func ensurePeriod(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+		return s
+	}
+	return s + "."
+}
+
+func cleanRecapText(summary string) string {
+	summary = strings.TrimSpace(summary)
+	return strings.TrimLeft(summary, "\u2014\u2013- \t\r\n")
 }
 
 func recentResultBullets(summary string, phillyTeam, opponent models.Team) []string {
@@ -805,11 +1185,9 @@ func trimContext(clause string, phillyTeam models.Team) string {
 func streakBullet(clause string, phillyTeam, opponent models.Team) string {
 	text := strings.TrimSpace(strings.TrimPrefix(clause, "ending "))
 	text = strings.TrimSpace(strings.TrimPrefix(text, "Ending "))
-	possessive := opponent.Name + "'"
+	possessive := opponent.Name + "'s"
 	if strings.HasSuffix(opponent.Name, "s") {
 		possessive = opponent.Name + "'"
-	} else {
-		possessive = opponent.Name + "'s"
 	}
 	text = strings.ReplaceAll(text, "the "+possessive, opponent.City+"'s")
 	text = strings.ReplaceAll(text, possessive, opponent.City+"'s")
@@ -825,20 +1203,420 @@ func startsWithCapitalizedWord(s string) bool {
 	return first >= 'A' && first <= 'Z'
 }
 
-func ensurePeriod(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+func (s *ESPNStore) applyCachedOrQueueAIRecap(gameID string, result models.RecentResult, facts gameRecapFacts) models.RecentResult {
+	if gameID == "" || os.Getenv("OPENAI_API_KEY") == "" {
+		return result
 	}
-	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
-		return s
+	if cached, ok := s.cachedAIRecap(gameID); ok {
+		log.Printf("AI recap cache hit for game %s", gameID)
+		return applyAIRecap(result, cached)
 	}
-	return s + "."
+	if !facts.HasProviderSummary {
+		return result
+	}
+	go s.generateAndCacheAIRecap(gameID, facts)
+	return result
 }
 
-func cleanRecapText(summary string) string {
-	summary = strings.TrimSpace(summary)
-	return strings.TrimLeft(summary, "\u2014\u2013- \t\r\n")
+func (s *ESPNStore) generateAndCacheAIRecap(gameID string, facts gameRecapFacts) {
+	if s.markAIRecapInFlight(gameID) {
+		return
+	}
+	defer s.clearAIRecapInFlight(gameID)
+
+	log.Printf(
+		"AI recap request starting for game %s: %s %s vs %s %s",
+		gameID,
+		facts.PhillyTeam.City,
+		facts.PhillyTeam.Name,
+		facts.Opponent.City,
+		facts.Opponent.Name,
+	)
+	recap, err := s.generateAIRecap(context.Background(), facts)
+	if err != nil {
+		log.Printf("AI recap skipped for game %s: %v", gameID, err)
+		return
+	}
+	recap.CachedAt = time.Now().UTC().Format(time.RFC3339)
+	log.Printf("AI recap generated for game %s", gameID)
+
+	s.mu.Lock()
+	s.aiRecapCache[gameID] = recap
+	saveErr := s.saveAIRecapCacheLocked()
+	s.mu.Unlock()
+	if saveErr != nil {
+		log.Printf("AI recap cache save failed for game %s: %v", gameID, saveErr)
+	}
+}
+
+func (s *ESPNStore) enhanceRecentResult(gameID string, result models.RecentResult, facts gameRecapFacts) models.RecentResult {
+	if gameID == "" || os.Getenv("OPENAI_API_KEY") == "" {
+		return result
+	}
+	if !facts.HasProviderSummary {
+		return result
+	}
+
+	if cached, ok := s.cachedAIRecap(gameID); ok {
+		log.Printf("AI recap cache hit for game %s", gameID)
+		return applyAIRecap(result, cached)
+	}
+
+	log.Printf(
+		"AI recap request starting for game %s: %s %s vs %s %s",
+		gameID,
+		facts.PhillyTeam.City,
+		facts.PhillyTeam.Name,
+		facts.Opponent.City,
+		facts.Opponent.Name,
+	)
+	recap, err := s.generateAIRecap(context.Background(), facts)
+	if err != nil {
+		log.Printf("AI recap skipped for game %s: %v", gameID, err)
+		return result
+	}
+	recap.CachedAt = time.Now().UTC().Format(time.RFC3339)
+	log.Printf("AI recap generated for game %s", gameID)
+
+	s.mu.Lock()
+	s.aiRecapCache[gameID] = recap
+	saveErr := s.saveAIRecapCacheLocked()
+	s.mu.Unlock()
+	if saveErr != nil {
+		log.Printf("AI recap cache save failed for game %s: %v", gameID, saveErr)
+	}
+
+	return applyAIRecap(result, recap)
+}
+
+func aiRecapCachePath() string {
+	if path := strings.TrimSpace(os.Getenv("AI_RECAP_CACHE_PATH")); path != "" {
+		return path
+	}
+	return filepath.Join(".", "ai-recap-cache.json")
+}
+
+func (s *ESPNStore) loadAIRecapCache() {
+	if s.aiCachePath == "" {
+		return
+	}
+
+	body, err := os.ReadFile(s.aiCachePath)
+	if err != nil {
+		return
+	}
+
+	var cache aiRecapCacheFile
+	if err := json.Unmarshal(body, &cache); err != nil || cache.Recaps == nil {
+		return
+	}
+
+	s.mu.Lock()
+	for gameID, recap := range cache.Recaps {
+		if gameID != "" {
+			s.aiRecapCache[gameID] = recap
+		}
+	}
+	s.mu.Unlock()
+}
+
+func (s *ESPNStore) saveAIRecapCacheLocked() error {
+	if s.aiCachePath == "" {
+		return nil
+	}
+
+	s.pruneAIRecapCacheLocked()
+
+	if err := os.MkdirAll(filepath.Dir(s.aiCachePath), 0750); err != nil {
+		return err
+	}
+
+	cache := aiRecapCacheFile{
+		Version: 1,
+		Recaps:  s.aiRecapCache,
+	}
+	body, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmpPath := s.aiCachePath + ".tmp"
+	if err := os.WriteFile(tmpPath, body, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.aiCachePath)
+}
+
+func (s *ESPNStore) pruneAIRecapCacheLocked() {
+	maxEntries := aiRecapCacheMaxEntries()
+	if maxEntries <= 0 || len(s.aiRecapCache) <= maxEntries {
+		return
+	}
+
+	type cacheEntry struct {
+		gameID   string
+		cachedAt time.Time
+	}
+	entries := make([]cacheEntry, 0, len(s.aiRecapCache))
+	for gameID, recap := range s.aiRecapCache {
+		t, err := time.Parse(time.RFC3339, recap.CachedAt)
+		if err != nil {
+			t = time.Time{}
+		}
+		entries = append(entries, cacheEntry{gameID: gameID, cachedAt: t})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].cachedAt.After(entries[j].cachedAt)
+	})
+	for _, entry := range entries[maxEntries:] {
+		delete(s.aiRecapCache, entry.gameID)
+	}
+}
+
+func aiRecapCacheMaxEntries() int {
+	raw := strings.TrimSpace(os.Getenv("AI_RECAP_CACHE_MAX_ENTRIES"))
+	if raw == "" {
+		return 100
+	}
+	maxEntries, err := strconv.Atoi(raw)
+	if err != nil {
+		return 100
+	}
+	return maxEntries
+}
+
+func (s *ESPNStore) cachedAIRecap(gameID string) (aiGameRecap, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	recap, ok := s.aiRecapCache[gameID]
+	return recap, ok
+}
+
+func (s *ESPNStore) markAIRecapInFlight(gameID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.aiRecapCache[gameID].Bullets != nil {
+		return true
+	}
+	if s.aiInFlight[gameID] {
+		return true
+	}
+	s.aiInFlight[gameID] = true
+	return false
+}
+
+func (s *ESPNStore) clearAIRecapInFlight(gameID string) {
+	s.mu.Lock()
+	delete(s.aiInFlight, gameID)
+	s.mu.Unlock()
+}
+
+func applyAIRecap(result models.RecentResult, recap aiGameRecap) models.RecentResult {
+	bullets := cleanAIBullets(recap.Bullets)
+	if len(bullets) > 0 {
+		result.Bullets = bullets
+	}
+	return result
+}
+
+func cleanAIBullets(bullets []string) []string {
+	cleaned := make([]string, 0, 3)
+	seen := map[string]bool{}
+	for _, bullet := range bullets {
+		bullet = ensurePeriod(strings.TrimSpace(bullet))
+		if bullet == "." {
+			continue
+		}
+		key := strings.ToLower(bullet)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		cleaned = append(cleaned, bullet)
+		if len(cleaned) == 3 {
+			break
+		}
+	}
+	return cleaned
+}
+
+func (s *ESPNStore) generateAIRecap(ctx context.Context, facts gameRecapFacts) (aiGameRecap, error) {
+	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	if apiKey == "" {
+		return aiGameRecap{}, fmt.Errorf("OPENAI_API_KEY is not set")
+	}
+
+	model := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
+	if model == "" {
+		model = "gpt-5-nano"
+	}
+
+	payload := map[string]interface{}{
+		"model": model,
+		"input": gameRecapPrompt(facts),
+		"text": map[string]interface{}{
+			"format": map[string]interface{}{
+				"type":   "json_schema",
+				"name":   "game_recap",
+				"strict": true,
+				"schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"bullets": map[string]interface{}{
+							"type":     "array",
+							"minItems": 1,
+							"maxItems": 3,
+							"items":    map[string]interface{}{"type": "string"},
+						},
+					},
+					"required":             []string{"bullets"},
+					"additionalProperties": false,
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return aiGameRecap{}, err
+	}
+
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("OPENAI_BASE_URL")), "/")
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/responses", bytes.NewReader(body))
+	if err != nil {
+		return aiGameRecap{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := *s.client
+	client.Timeout = openAITimeout()
+	resp, err := client.Do(req)
+	if err != nil {
+		return aiGameRecap{}, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return aiGameRecap{}, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return aiGameRecap{}, fmt.Errorf("openai status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var openAIResp openAIResponse
+	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
+		return aiGameRecap{}, err
+	}
+	if openAIResp.Error != nil {
+		return aiGameRecap{}, fmt.Errorf("openai: %s", openAIResp.Error.Message)
+	}
+
+	text := strings.TrimSpace(openAIOutputText(openAIResp))
+	if text == "" {
+		return aiGameRecap{}, fmt.Errorf("openai response did not include output text")
+	}
+
+	var recap aiGameRecap
+	if err := json.Unmarshal([]byte(text), &recap); err != nil {
+		return aiGameRecap{}, err
+	}
+	if len(cleanAIBullets(recap.Bullets)) == 0 {
+		return aiGameRecap{}, fmt.Errorf("openai recap was empty")
+	}
+	return recap, nil
+}
+
+func openAITimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("OPENAI_TIMEOUT_SECONDS")); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err == nil && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return 30 * time.Second
+}
+
+func openAIOutputText(resp openAIResponse) string {
+	for _, output := range resp.Output {
+		for _, content := range output.Content {
+			if content.Type == "output_text" && strings.TrimSpace(content.Text) != "" {
+				return content.Text
+			}
+		}
+	}
+	return ""
+}
+
+func gameRecapPrompt(facts gameRecapFacts) string {
+	location := "home"
+	if !facts.Home {
+		location = "road"
+	}
+	return fmt.Sprintf(`You are formatting a sports game headline for a website.
+
+The website already displays:
+- Date
+- Final score
+- Both teams
+
+Turn the headline into 2-4 clean bullet points that summarize the key storylines.
+
+Rules:
+- Do not repeat the final score.
+- Do not repeat the matchup unless needed for clarity.
+- Do not mention the date.
+- Focus on player highlights, milestones, and why the game mattered.
+- Keep each bullet short and easy to read.
+- Use plain language.
+- Do not add facts that are not in the headline.
+- Do not guess stats, innings, records, or player performance.
+- Return only valid JSON.
+- Use this exact format:
+
+{
+  "bullets": [
+    "First bullet",
+    "Second bullet"
+  ]
+}
+Headline:
+
+{{HEADLINE}}
+
+Facts:
+Sport: %s
+Philadelphia team: %s %s
+Opponent: %s %s
+Result for Philadelphia: %s
+Score: %s %d, %s %d
+Game location: %s
+Venue: %s
+City: %s
+Date: %s
+Provider description: %s
+`,
+		facts.Sport,
+		facts.PhillyTeam.City,
+		facts.PhillyTeam.Name,
+		facts.Opponent.City,
+		facts.Opponent.Name,
+		facts.Result,
+		facts.PhillyTeam.Name,
+		facts.PhillyScore,
+		facts.Opponent.Name,
+		facts.OppScore,
+		location,
+		facts.Venue,
+		facts.City,
+		PhillyTime(facts.GameDate).Format("January 2, 2006"),
+		facts.RawSummary,
+	)
 }
 
 func (s *ESPNStore) GetTeams() []models.Team {
@@ -873,8 +1651,8 @@ func parseESPNEvent(ev espnEvent, sport models.Sport) (models.Game, bool) {
 		}
 	}
 
-	homeScore, _ := strconv.Atoi(home.Score)
-	awayScore, _ := strconv.Atoi(away.Score)
+	homeScore, _ := strconv.Atoi(string(home.Score))
+	awayScore, _ := strconv.Atoi(string(away.Score))
 
 	broadcasts := make([]string, 0)
 	for _, b := range comp.Broadcasts {
@@ -921,7 +1699,13 @@ func espnToTeam(t espnTeam, sport models.Sport) models.Team {
 	}
 	name := t.Name
 	if name == "" {
+		name = t.Nickname
+	}
+	if name == "" {
 		name = strings.TrimSpace(strings.TrimPrefix(t.DisplayName, t.Location))
+	}
+	if name == "" {
+		name = t.ShortDisplayName
 	}
 	if name == "" {
 		name = t.Abbreviation
@@ -948,7 +1732,7 @@ func espnToTeam(t espnTeam, sport models.Sport) models.Team {
 func espnGameStatus(s espnStatus) models.GameStatus {
 	n := s.Type.Name
 	switch {
-	case strings.HasPrefix(n, "STATUS_FINAL"):
+	case strings.HasPrefix(n, "STATUS_FINAL"), n == "STATUS_FULL_TIME":
 		return models.StatusFinal
 	case n == "STATUS_IN_PROGRESS", n == "STATUS_HALFTIME", n == "STATUS_END_PERIOD":
 		return models.StatusLive
@@ -1024,6 +1808,114 @@ func espnBaseballState(sport models.Sport, status models.GameStatus, situation e
 		Batter:   batter,
 		Pitcher:  pitcher,
 	}
+}
+
+func (s *ESPNStore) enrichMLBGame(g models.Game) models.Game {
+	if g.Sport != models.MLB || !isPhillyGame(g) || g.Status == models.StatusScheduled {
+		return g
+	}
+	gamePk := s.findMLBGamePk(g)
+	if gamePk == 0 {
+		return g
+	}
+
+	var feed mlbLiveFeedResp
+	url := fmt.Sprintf(mlbLiveFeedURL, gamePk)
+	if err := s.fetchJSON(url, &feed); err != nil {
+		return g
+	}
+
+	if g.Baseball == nil {
+		g.Baseball = &models.BaseballState{}
+	}
+	linescore := feed.LiveData.Linescore
+	if linescore.Outs != 0 || linescore.Balls != 0 || linescore.Strikes != 0 || linescore.Offense.Batter.FullName != "" || linescore.Defense.Pitcher.FullName != "" {
+		g.Baseball.Outs = linescore.Outs
+		g.Baseball.Balls = linescore.Balls
+		g.Baseball.Strikes = linescore.Strikes
+		g.Baseball.OnFirst = linescore.Offense.First.ID != 0
+		g.Baseball.OnSecond = linescore.Offense.Second.ID != 0
+		g.Baseball.OnThird = linescore.Offense.Third.ID != 0
+		g.Baseball.Batter = strings.TrimSpace(linescore.Offense.Batter.FullName)
+		g.Baseball.Pitcher = strings.TrimSpace(linescore.Defense.Pitcher.FullName)
+	}
+
+	current := feed.LiveData.Plays.CurrentPlay
+	if desc := cleanMLBPlayDescription(current.Result.Description); desc != "" {
+		g.Baseball.CurrentPlay = desc
+	}
+	g.Baseball.Plays = latestMLBPlays(feed.LiveData.Plays.AllPlays, 4)
+	return g
+}
+
+func (s *ESPNStore) findMLBGamePk(g models.Game) int {
+	date := PhillyTime(g.StartTime).Format("2006-01-02")
+	url := fmt.Sprintf(mlbScheduleURL, date)
+	var schedule mlbScheduleResp
+	if err := s.fetchJSON(url, &schedule); err != nil {
+		return 0
+	}
+	for _, d := range schedule.Dates {
+		for _, game := range d.Games {
+			if mlbScheduleMatchesGame(game, g) {
+				return game.GamePk
+			}
+		}
+	}
+	return 0
+}
+
+func mlbScheduleMatchesGame(mlbGame mlbScheduleGame, g models.Game) bool {
+	homeName := strings.ToLower(mlbGame.Teams.Home.Team.Name)
+	awayName := strings.ToLower(mlbGame.Teams.Away.Team.Name)
+	return teamMatchesMLBName(g.HomeTeam, homeName) && teamMatchesMLBName(g.AwayTeam, awayName)
+}
+
+func teamMatchesMLBName(team models.Team, mlbName string) bool {
+	if mlbName == "" {
+		return false
+	}
+	for _, value := range []string{team.City, team.Name, team.Abbr, team.City + " " + team.Name} {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != "" && strings.Contains(mlbName, value) {
+			return true
+		}
+	}
+	return false
+}
+
+func latestMLBPlays(plays []mlbPlay, max int) []models.BaseballPlay {
+	if max <= 0 {
+		return nil
+	}
+	out := make([]models.BaseballPlay, 0, max)
+	for i := len(plays) - 1; i >= 0 && len(out) < max; i-- {
+		desc := cleanMLBPlayDescription(plays[i].Result.Description)
+		if desc == "" {
+			desc = cleanMLBPlayDescription(plays[i].Result.Event)
+		}
+		if desc == "" {
+			continue
+		}
+		out = append(out, models.BaseballPlay{
+			Inning:      plays[i].About.Inning,
+			HalfInning:  formatHalfInning(plays[i].About.HalfInning),
+			Description: desc,
+		})
+	}
+	return out
+}
+
+func formatHalfInning(half string) string {
+	half = strings.ToLower(strings.TrimSpace(half))
+	if half == "" {
+		return ""
+	}
+	return strings.ToUpper(half[:1]) + half[1:]
+}
+
+func cleanMLBPlayDescription(desc string) string {
+	return strings.TrimSpace(desc)
 }
 
 func (s *ESPNStore) fetchPitcherStrikeouts(eventID, pitcherName string) string {
@@ -1112,6 +2004,12 @@ func (s *ESPNStore) activePhillyTeamKeys() map[string]bool {
 		}
 		keys[phillyGameKey(game)] = true
 	}
+	for _, result := range s.GetRecentResults() {
+		if !isInSeason(result.Team.Sport) {
+			continue
+		}
+		keys[string(result.Team.Sport)+":"+result.Team.ID] = true
+	}
 	return keys
 }
 
@@ -1154,7 +2052,7 @@ func canonicalPhillyTeam(team models.Team) models.Team {
 		models.MLB: {"22": Phillies},
 		models.NBA: {"20": Sixers},
 		models.NHL: {"4": Flyers, "15": Flyers},
-		models.MLS: {"16": Union},
+		models.MLS: {"10739": Union},
 	}
 	if byID, ok := teams[team.Sport]; ok {
 		if canonical, ok := byID[team.ID]; ok {

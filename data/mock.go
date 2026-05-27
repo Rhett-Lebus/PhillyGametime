@@ -101,6 +101,13 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 				Batter:            "Bryce Harper",
 				Pitcher:           "Kodai Senga",
 				PitcherStrikeouts: "6",
+				CurrentPlay:       "Bryce Harper takes ball two with runners on the corners.",
+				Plays: []models.BaseballPlay{
+					{Inning: 7, HalfInning: "Top", Description: "Bryce Harper takes ball two with runners on the corners."},
+					{Inning: 7, HalfInning: "Top", Description: "Trea Turner singles on a line drive to center. Kyle Schwarber advances to third."},
+					{Inning: 7, HalfInning: "Top", Description: "Kyle Schwarber walks."},
+					{Inning: 6, HalfInning: "Bottom", Description: "Kodai Senga strikes out Brandon Marsh swinging."},
+				},
 			},
 			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 13, 5, 0),
 			Venue:     "Citizens Bank Park",

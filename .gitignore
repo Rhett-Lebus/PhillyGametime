@@ -7,6 +7,8 @@ philly-gametime
 # Local environment
 .env
 *.pem
+ai-recap-cache.json
+ai-recap-cache.json.tmp
 
 # OS/editor files
 .DS_Store

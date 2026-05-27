@@ -61,6 +61,15 @@ type BaseballState struct {
 	Batter            string
 	Pitcher           string
 	PitcherStrikeouts string
+	CurrentPlay       string
+	Plays             []BaseballPlay
+}
+
+type BaseballPlay struct {
+	Inning      int
+	HalfInning  string
+	Description string
+	Score       string
 }
 
 type StandingsRow struct {
@@ -73,6 +82,7 @@ type StandingsRow struct {
 }
 
 type RecentResult struct {
+	GameID   string
 	Team     Team
 	Opponent Team
 	Home     bool

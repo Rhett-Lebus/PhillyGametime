@@ -18,6 +18,11 @@ func main() {
 	if os.Getenv("PHILLY_DATA") == "mock" {
 		store = data.NewMockStore()
 	}
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		log.Printf("OpenAI recap cleanup disabled: OPENAI_API_KEY is not set")
+	} else {
+		log.Printf("OpenAI recap cleanup enabled with model %q", openAIModelName())
+	}
 	h := handlers.New(store, bus)
 
 	mux := http.NewServeMux()
@@ -56,6 +61,13 @@ func main() {
 	}
 }
 
+func openAIModelName() string {
+	if model := os.Getenv("OPENAI_MODEL"); model != "" {
+		return model
+	}
+	return "gpt-5-nano"
+}
+
 func publishScoreChanges(store data.Store, bus *events.Bus, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -78,6 +90,9 @@ func publishScoreChanges(store data.Store, bus *events.Bus, interval time.Durati
 				}
 			}
 			if old, ok := previous[game.ID]; ok && old.Status == models.StatusLive && game.Status == models.StatusFinal {
+				if invalidator, ok := store.(interface{ InvalidateRecentResults() }); ok {
+					invalidator.InvalidateRecentResults()
+				}
 				bus.Publish(events.Event{Type: events.EventGameEnd, Payload: game})
 			}
 			previous[game.ID] = game
