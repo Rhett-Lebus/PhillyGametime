@@ -43,7 +43,7 @@
     <div class="schedule-calendar">
       {{range .Lead}}<div class="schedule-day schedule-day--blank"></div>{{end}}
       {{range .Days}}
-      <div class="schedule-day {{if .IsToday}}schedule-day--today{{end}} {{if .Games}}schedule-day--game{{end}}" {{if .IsToday}}data-schedule-today="true"{{end}}>
+      <div class="schedule-day {{if .IsToday}}schedule-day--today{{end}} {{if .Games}}schedule-day--game{{end}}" data-schedule-date="{{.Date.Format "2006-01-02"}}" {{if .IsToday}}data-schedule-today="true"{{end}}>
         <span class="schedule-day-number">{{.Date.Format "2"}}</span>
         {{range $g := .Games}}
         <article class="schedule-game {{if eq $g.Status "Final"}}schedule-game--final{{end}} {{if eq $g.Status "Live"}}schedule-game--live{{end}}" data-game-id="{{$g.ID}}" data-philly-home="{{if isPhilly $g.HomeTeam}}true{{else}}false{{end}}" style="--team-color:{{(phillyTeam $g).Primary}}">
@@ -81,7 +81,7 @@
       {{end}}
       {{range .Days}}
         {{if .Games}}
-        <div class="schedule-agenda-day {{if .IsToday}}schedule-agenda-day--today{{end}}">
+        <div class="schedule-agenda-day {{if .IsToday}}schedule-agenda-day--today{{end}}" data-schedule-date="{{.Date.Format "2006-01-02"}}">
           <div class="schedule-agenda-date">
             <strong>{{.Date.Format "Mon"}}</strong>
             <span>{{.Date.Format "Jan 2"}}</span>

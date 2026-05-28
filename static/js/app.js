@@ -58,13 +58,35 @@
     if (!select || sections.length === 0) return;
 
     const teamIDs = sections.map((section) => section.dataset.scheduleTeam);
-    const jumpToToday = (section) => {
-      const candidates = Array.from(section.querySelectorAll('.schedule-agenda-day--today, [data-schedule-today="true"], .schedule-day--today'));
-      const today = candidates.find((candidate) => candidate.offsetParent !== null) || candidates[0];
-      if (!today) return;
+    const todayKey = () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const visible = (element) => Boolean(element && element.offsetParent !== null);
+    const scheduleDate = (element) => element ? (element.dataset.scheduleDate || '') : '';
+    const gameDays = (section) => Array.from(section.querySelectorAll('.schedule-day--game[data-schedule-date]'));
+    const nextGameDay = (section) => {
+      const today = todayKey();
+      return gameDays(section).find((day) => scheduleDate(day) >= today) || null;
+    };
+    const jumpToScheduleTarget = (section) => {
+      const today = todayKey();
+      const isMobile = window.matchMedia('(max-width: 920px)').matches;
+      const visibleToday = Array.from(section.querySelectorAll('.schedule-agenda-day--today, [data-schedule-today="true"], .schedule-day--today'))
+        .find(visible);
+      const visibleUpcoming = Array.from(section.querySelectorAll('.schedule-agenda-day[data-schedule-date], .schedule-day--game[data-schedule-date]'))
+        .find((day) => visible(day) && scheduleDate(day) >= today);
+      const visibleGame = Array.from(section.querySelectorAll('.schedule-agenda-day[data-schedule-date], .schedule-day--game[data-schedule-date]'))
+        .find(visible);
+      const visibleMonth = monthElements(section).find(visible);
+      const target = visibleToday || visibleUpcoming || visibleGame || visibleMonth;
+      if (!target) return;
       const scroll = () => {
-        const block = window.matchMedia('(max-width: 920px)').matches ? 'start' : 'center';
-        today.scrollIntoView({ block, behavior: 'smooth' });
+        const block = isMobile ? 'start' : 'center';
+        target.scrollIntoView({ block, behavior: 'smooth' });
       };
       requestAnimationFrame(scroll);
       setTimeout(scroll, 150);
@@ -88,9 +110,11 @@
         monthPicker.removeAttribute('min');
         monthPicker.removeAttribute('max');
       }
+      const upcoming = nextGameDay(section);
+      const upcomingMonth = upcoming ? upcoming.closest('[data-schedule-month]') : null;
       const currentWithGame = months.find((month) => month.dataset.currentMonth === 'true' && monthHasGame(month));
       const firstWithGame = months.find(monthHasGame);
-      const current = currentWithGame || firstWithGame || months.find((month) => month.dataset.currentMonth === 'true') || months[0];
+      const current = upcomingMonth || currentWithGame || firstWithGame || months.find((month) => month.dataset.currentMonth === 'true') || months[0];
       const selected = current ? current.dataset.scheduleMonth : '';
       monthPicker.value = selected;
       return selected;
@@ -105,7 +129,7 @@
         month.hidden = month.dataset.scheduleMonth !== selected;
       });
       if (monthPicker && selected) monthPicker.value = selected;
-      if (scrollToday) jumpToToday(section);
+      if (scrollToday) jumpToScheduleTarget(section);
     };
 
     const adjustMonth = (delta) => {
@@ -214,7 +238,9 @@
     }
 
     const baseball = card.querySelector('.baseball-live');
-    if (baseball && game.Baseball) {
+    if (baseball && (game.Status !== 'Live' || !game.Baseball)) {
+      baseball.remove();
+    } else if (baseball && game.Baseball) {
       const states = {
         first: game.Baseball.OnFirst,
         second: game.Baseball.OnSecond,

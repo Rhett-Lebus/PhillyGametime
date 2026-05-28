@@ -43,7 +43,7 @@
           <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
         </div>
       </div>
-      {{with .Baseball}}
+      {{if eq .Status "Live"}}{{with .Baseball}}
       <div class="baseball-live">
         <div class="bases-diamond" aria-label="Bases occupied">
           <span class="base base--second {{if .OnSecond}}base--occupied{{end}}"></span>
@@ -74,7 +74,7 @@
         </ul>
         {{end}}
       </div>
-      {{end}}
+      {{end}}{{end}}
       <div class="game-broadcast">
         {{range $i, $b := .Broadcast}}
           {{if eq $i 0}}<span class="broadcast-primary">{{broadcastShort $b}}</span>

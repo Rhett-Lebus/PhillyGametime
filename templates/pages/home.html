@@ -45,7 +45,7 @@
             </div>
           </div>
 
-          {{with .Baseball}}
+          {{if eq .Status "Live"}}{{with .Baseball}}
           <div class="baseball-live">
             <div class="bases-diamond" aria-label="Bases occupied">
               <span class="base base--second {{if .OnSecond}}base--occupied{{end}}"></span>
@@ -76,7 +76,7 @@
             </ul>
             {{end}}
           </div>
-          {{end}}
+          {{end}}{{end}}
 
           <div class="game-broadcast">
             {{range $i, $b := .Broadcast}}

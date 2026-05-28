@@ -1052,7 +1052,9 @@ a { color: inherit; text-decoration: none; }
   box-shadow: inset 0 0 0 2px #0f766e;
 }
 .schedule-day--today,
-.schedule-agenda-day--today {
+.schedule-agenda-day--today,
+.schedule-agenda-day,
+.schedule-month {
   scroll-margin-top: calc(var(--header-height, 58px) + var(--schedule-controls-height, 76px) + 30px);
 }
 .schedule-day--game {
@@ -1462,7 +1464,9 @@ a { color: inherit; text-decoration: none; }
   min-height: 112px;
   padding: 18px;
   color: #fff;
+  text-decoration: none;
 }
+.team-card-header:hover { filter: brightness(1.04); }
 .team-card-city { display: block; font-size: 12px; opacity: .78; font-weight: 800; }
 .team-card-name { display: block; font-size: 24px; }
 .sport-pill {
@@ -1482,6 +1486,107 @@ a { color: inherit; text-decoration: none; }
 }
 .team-card-body a:last-child { border-right: 0; }
 .team-card-body a:hover { background: var(--surface-hover); }
+.team-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+  padding: 22px;
+  color: #fff;
+  background:
+    linear-gradient(110deg, rgba(0,0,0,.18), rgba(0,0,0,.44)),
+    var(--team-color);
+  border: 1px solid color-mix(in srgb, var(--team-accent) 42%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 12px 26px var(--surface-shadow);
+}
+.team-hero h1 {
+  margin: 2px 0 0;
+  color: #fff;
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: .96;
+}
+.team-hero .eyebrow {
+  color: rgba(255,255,255,.78);
+  margin: 0;
+}
+.team-hero__logo {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+}
+.team-hero__logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.28));
+}
+.team-hero__logo span {
+  font-size: 20px;
+  font-weight: 900;
+}
+.team-hero__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.team-hero__actions a {
+  padding: 9px 12px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.26);
+  border-radius: 5px;
+  background: rgba(255,255,255,.12);
+}
+.team-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
+  align-items: start;
+}
+.team-feature-game {
+  margin-bottom: 18px;
+}
+.team-next-game {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 5px solid;
+  border-radius: 6px;
+  box-shadow: 0 1px 5px var(--surface-shadow);
+}
+.team-next-game__logos {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.team-next-game__logos strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+.team-next-game__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+.team-section-heading {
+  margin-top: 22px;
+}
+.team-upcoming-list .upcoming-item {
+  padding: 12px;
+}
 .tv-card { padding: 18px; }
 .tv-card.preferred { border-color: #7dc7e8; box-shadow: 0 0 0 3px rgba(11,119,182,.12); }
 .tv-card h2 { margin: 14px 0 8px; font-size: 18px; }
@@ -1540,6 +1645,28 @@ a { color: inherit; text-decoration: none; }
   .main-nav { order: 3; flex-basis: 100%; overflow-x: auto; }
   .theme-picker { margin-left: auto; }
   .home-layout { grid-template-columns: 1fr; }
+  .team-detail-grid { grid-template-columns: 1fr; }
+  .team-hero {
+    grid-template-columns: 64px minmax(0, 1fr);
+    padding: 16px;
+  }
+  .team-hero__logo {
+    width: 64px;
+    height: 64px;
+  }
+  .team-hero h1 {
+    font-size: 30px;
+  }
+  .team-hero__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .team-next-game__logos {
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+  }
+  .team-next-game__logos strong {
+    font-size: 17px;
+  }
   .upcoming-item { grid-template-columns: 1fr; }
   .upcoming-info, .upcoming-tv { justify-content: flex-start; }
   .upcoming-teams { grid-template-columns: 100px minmax(0, 1fr) 100px; }

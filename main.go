@@ -33,6 +33,7 @@ func main() {
 	mux.HandleFunc("GET /upcoming", h.Upcoming)
 	mux.HandleFunc("GET /schedule", h.Schedule)
 	mux.HandleFunc("GET /teams", h.Teams)
+	mux.HandleFunc("GET /teams/{id}", h.TeamDetail)
 	mux.HandleFunc("GET /stats", h.Stats)
 	mux.HandleFunc("GET /tv", h.TV)
 

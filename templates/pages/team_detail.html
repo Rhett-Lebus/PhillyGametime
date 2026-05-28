@@ -1,0 +1,126 @@
+{{define "content"}}
+<section class="team-hero" style="--team-color:{{.Team.Primary}}; --team-accent:{{.Team.Secondary}}">
+  <div class="team-hero__logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
+  <div>
+    <p class="eyebrow">{{.Team.Sport}}</p>
+    <h1>{{.Team.City}} {{.Team.Name}}</h1>
+  </div>
+  <div class="team-hero__actions">
+    <a href="/schedule#{{.Team.ID}}">Full schedule</a>
+  </div>
+</section>
+
+<div class="team-detail-grid">
+  <section class="section main-content">
+    <div class="section-heading">
+      <h2>{{if .LiveGame}}Live now{{else}}Next game{{end}}</h2>
+    </div>
+    {{with .LiveGame}}
+    <article class="team-feature-game game-card game-card--live" data-game-id="{{.ID}}" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+      <div class="game-card-header">
+        <span class="badge badge--live">Live</span>
+        <span class="game-period">{{.Period}}{{if .TimeLeft}} - {{.TimeLeft}}{{end}}</span>
+      </div>
+      <div class="live-matchup">
+        <div class="live-team live-team--away">
+          <div class="live-logo">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
+          <span class="live-name">{{.AwayTeam.Name}}</span>
+          <span class="score-value score-away">{{.AwayScore}}</span>
+        </div>
+        <span class="live-vs">vs</span>
+        <div class="live-team live-team--home">
+          <span class="score-value score-home">{{.HomeScore}}</span>
+          <span class="live-name">{{.HomeTeam.Name}}</span>
+          <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
+        </div>
+      </div>
+    </article>
+    {{else}}
+      {{with .NextGame}}
+      <article class="team-next-game" style="border-left-color:{{(phillyTeam .).Primary}}">
+        <div class="team-next-game__logos" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+          <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
+          <strong>{{.AwayTeam.Name}} {{vsAt .}} {{.HomeTeam.Name}}</strong>
+          <div class="team-split team-split--home">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
+        </div>
+        <div class="team-next-game__meta">
+          <span>{{formatDateTime .StartTime}}</span>
+          {{if .IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
+          <span>{{.Venue}}, {{.City}}</span>
+          {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
+        </div>
+      </article>
+      {{else}}
+      <div class="empty-state">No upcoming games returned for this team right now.</div>
+      {{end}}
+    {{end}}
+
+    <div class="section-heading team-section-heading">
+      <h2>Upcoming</h2>
+      <a href="/schedule#{{.Team.ID}}">Full schedule</a>
+    </div>
+    <div class="upcoming-list team-upcoming-list">
+      {{range .Upcoming}}
+      <article class="upcoming-item" style="border-left-color:{{(phillyTeam .).Primary}}">
+        <div class="upcoming-teams" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+          <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
+          <div class="team-matchup"><strong>{{.AwayTeam.Name}}</strong><span>{{vsAt .}}</span><strong>{{.HomeTeam.Name}}</strong></div>
+          <div class="team-split team-split--home">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
+        </div>
+        <div class="upcoming-info">
+          <span>{{formatDateTime .StartTime}}</span>
+          {{if .IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
+          <span>{{.Venue}}, {{.City}}</span>
+        </div>
+      </article>
+      {{else}}
+      <div class="empty-state">No upcoming games returned for this team right now.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <section class="sidebar-section">
+      <h3>Standings</h3>
+      {{with .Standing}}
+      <table class="standings-table">
+        <thead><tr><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
+        <tbody>
+          <tr style="--team-color:{{.Team.Primary}}">
+            <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.Name}}</span></td>
+            <td><span class="stat-value">{{.Record}}</span></td>
+            <td><span class="stat-value">{{.Home}}</span></td>
+            <td><span class="stat-value">{{.Away}}</span></td>
+          </tr>
+        </tbody>
+      </table>
+      {{else}}
+      <div class="empty-inline">No standings returned.</div>
+      {{end}}
+    </section>
+
+    <section class="sidebar-section">
+      <h3>Recent Result</h3>
+      {{with .Recent}}
+      <div class="recent-item" style="--team-color:{{.Team.Primary}}">
+        <div class="recent-main">
+          <div class="recent-logos">
+            <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
+            {{if .Opponent.Name}}<div class="result-logo result-logo--opponent">{{if .Opponent.LogoURL}}<img src="{{.Opponent.LogoURL}}" alt="{{.Opponent.City}} {{.Opponent.Name}} logo">{{else}}<span>{{.Opponent.Abbr}}</span>{{end}}</div>{{end}}
+          </div>
+          <span class="recent-matchup">
+            <strong>{{.Team.Name}}</strong>
+            {{if .Opponent.Name}}<small>{{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}</small>{{end}}
+            {{with formatShortDate .GameDate}}<small class="recent-date">{{.}}</small>{{end}}
+          </span>
+          <strong class="recent-record">{{.Record}}</strong>
+        </div>
+        {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
+      </div>
+      {{else}}
+      <div class="empty-inline">No recent result returned.</div>
+      {{end}}
+    </section>
+  </aside>
+</div>
+{{end}}

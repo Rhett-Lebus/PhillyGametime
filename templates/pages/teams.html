@@ -8,16 +8,16 @@
   <div class="teams-grid">
     {{range .Teams}}
     <article class="team-card" id="{{.ID}}">
-      <div class="team-card-header" style="background:{{.Primary}}">
+      <a class="team-card-header" href="/teams/{{.ID}}" style="background:{{.Primary}}">
         <div class="team-badge lg" style="background:{{.Secondary}}; color:{{.Primary}}">{{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.City}} {{.Name}} logo">{{else}}{{.Abbr}}{{end}}</div>
         <div>
           <span class="team-card-city">{{.City}}</span>
           <strong class="team-card-name">{{.Name}}</strong>
         </div>
         <span class="sport-pill">{{.Sport}}</span>
-      </div>
+      </a>
       <div class="team-card-body">
-        <a href="/scores?team={{.ID}}">Scores</a>
+        <a href="/teams/{{.ID}}">Overview</a>
         <a href="/schedule#{{.ID}}">Schedule</a>
         <a href="/stats?team={{.ID}}">Stats</a>
       </div>

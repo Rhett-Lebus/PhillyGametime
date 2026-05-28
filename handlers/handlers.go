@@ -223,6 +223,9 @@ func (h *Handler) withLayout(data interface{}) interface{} {
 	case TeamsData:
 		v.ShowThemePicker = h.showThemePicker
 		return v
+	case TeamDetailData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
 	case StatsData:
 		v.ShowThemePicker = h.showThemePicker
 		return v
@@ -295,6 +298,18 @@ type TeamsData struct {
 	NavActive string
 	Title     string
 	Teams     []models.Team
+}
+
+type TeamDetailData struct {
+	LayoutData
+	NavActive string
+	Title     string
+	Team      models.Team
+	LiveGame  *models.Game
+	NextGame  *models.Game
+	Upcoming  []models.Game
+	Recent    *models.RecentResult
+	Standing  *models.StandingsRow
 }
 
 type StatsData struct {
@@ -453,6 +468,124 @@ func (h *Handler) Teams(w http.ResponseWriter, r *http.Request) {
 		Title:     "Teams",
 		Teams:     h.store.GetTeams(),
 	})
+}
+
+func (h *Handler) TeamDetail(w http.ResponseWriter, r *http.Request) {
+	teamID := strings.ToLower(strings.TrimSpace(r.PathValue("id")))
+	team, ok := h.findTeam(teamID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	liveGame := firstMatchingGame(h.store.GetTodaysGames(), team, func(g models.Game) bool {
+		return g.Status == models.StatusLive
+	})
+	upcoming := upcomingTeamGames(h.store.GetFullSchedules(), team, 5)
+	nextGame := firstGame(upcoming)
+	if nextGame == nil {
+		nextGame = firstMatchingGame(h.store.GetTodaysGames(), team, func(g models.Game) bool {
+			return g.Status != models.StatusFinal && g.Status != models.StatusCancelled && g.Status != models.StatusPostponed
+		})
+	}
+	recent := firstRecentResult(h.store.GetRecentResults(), team)
+	standing := firstStanding(h.store.GetStandings(), team)
+
+	h.render(w, "team_detail", TeamDetailData{
+		NavActive: "teams",
+		Title:     team.City + " " + team.Name,
+		Team:      team,
+		LiveGame:  liveGame,
+		NextGame:  nextGame,
+		Upcoming:  upcoming,
+		Recent:    recent,
+		Standing:  standing,
+	})
+}
+
+func (h *Handler) findTeam(teamID string) (models.Team, bool) {
+	for _, team := range h.store.GetTeams() {
+		if strings.EqualFold(team.ID, teamID) || strings.EqualFold(team.Name, teamID) {
+			return team, true
+		}
+	}
+	return models.Team{}, false
+}
+
+func firstMatchingGame(games []models.Game, team models.Team, keep func(models.Game) bool) *models.Game {
+	for _, game := range games {
+		if teamInGame(game, team) && keep(game) {
+			g := game
+			return &g
+		}
+	}
+	return nil
+}
+
+func upcomingTeamGames(schedules []models.TeamSchedule, team models.Team, limit int) []models.Game {
+	now := data.NowPhilly()
+	games := make([]models.Game, 0)
+	for _, schedule := range schedules {
+		if !sameTeam(schedule.Team, team) {
+			continue
+		}
+		for _, game := range schedule.Games {
+			if data.PhillyTime(game.StartTime).Before(now) && game.Status != models.StatusLive {
+				continue
+			}
+			if game.Status == models.StatusFinal || game.Status == models.StatusCancelled || game.Status == models.StatusPostponed {
+				continue
+			}
+			games = append(games, game)
+		}
+		break
+	}
+	sort.Slice(games, func(i, j int) bool {
+		return games[i].StartTime.Before(games[j].StartTime)
+	})
+	if limit > 0 && len(games) > limit {
+		return games[:limit]
+	}
+	return games
+}
+
+func firstGame(games []models.Game) *models.Game {
+	if len(games) == 0 {
+		return nil
+	}
+	g := games[0]
+	return &g
+}
+
+func firstRecentResult(results []models.RecentResult, team models.Team) *models.RecentResult {
+	for _, result := range results {
+		if sameTeam(result.Team, team) {
+			r := result
+			return &r
+		}
+	}
+	return nil
+}
+
+func firstStanding(rows []models.StandingsRow, team models.Team) *models.StandingsRow {
+	for _, row := range rows {
+		if sameTeam(row.Team, team) {
+			r := row
+			return &r
+		}
+	}
+	return nil
+}
+
+func teamInGame(game models.Game, team models.Team) bool {
+	return sameTeam(game.HomeTeam, team) || sameTeam(game.AwayTeam, team)
+}
+
+func sameTeam(a, b models.Team) bool {
+	if a.ID != "" && b.ID != "" && strings.EqualFold(a.ID, b.ID) {
+		return true
+	}
+	return strings.EqualFold(a.Name, b.Name) && strings.EqualFold(a.City, b.City)
 }
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {

@@ -8,9 +8,11 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 
 - Home dashboard with today's Philly action, upcoming games, recent results, and standings
 - Live scores page
-- Live MLB game state with base runners, balls, strikes, outs, current batter, current pitcher, and the pitcher's current-game strikeouts
+- Live MLB game state with base runners, balls, strikes, outs, current batter, current pitcher, and the pitcher's current-game strikeouts while games are live
+- Final MLB games collapse back to score-only cards instead of showing stale count/base/play state
 - Upcoming schedule page
-- Team directory
+- Full schedule page with team filtering, month controls, mobile agenda layout, and next-game jump behavior
+- Team directory plus team detail pages with live/next game, upcoming games, standings, and recent result
 - Stats/standings page
 - TV/stream guide with Philly-first broadcast sorting
 - Theme picker with Basic, Light, Dark, Midnight, and multiple Neon modes
@@ -60,7 +62,7 @@ Open:
 http://localhost:8090
 ```
 
-Mock mode includes a live Phillies game with baseball count state and pitcher strikeouts so the live-game UI can be verified locally.
+Mock mode includes a live Phillies game with baseball count state and pitcher strikeouts so the live-game UI can be verified locally. It also includes team schedules, standings, recent results, and team detail data for local page previews.
 
 To return to live data in the same shell:
 
@@ -123,9 +125,18 @@ Pages:
 - `GET /`
 - `GET /scores`
 - `GET /upcoming`
+- `GET /schedule`
 - `GET /teams`
+- `GET /teams/{id}` where `{id}` is `eagles`, `phillies`, `sixers`, `flyers`, or `union`
 - `GET /stats`
 - `GET /tv`
+
+Navigation behavior:
+
+- Footer team links open the corresponding team detail page.
+- Team detail pages link to `/schedule#team-id` for the full filtered schedule.
+- The schedule page reads the hash (`/schedule#phillies`, `/schedule#eagles`, etc.) and selects that team.
+- On mobile, the schedule agenda scrolls to today's game day when present; otherwise it scrolls to the next available game day.
 
 API and events:
 
@@ -235,4 +246,5 @@ sudo systemctl reload caddy
 - The default store calls ESPN scoreboard/schedule endpoints.
 - Local Philly broadcast names are prioritized, including `NBC Sports Philadelphia`, `NBCSP`, `NBC10`, `PHL17`, `6abc`, and `FOX 29`.
 - Game dates and times are displayed in Philadelphia time (`America/New_York`) regardless of the server timezone.
+- Team detail pages are assembled from the existing store data (`GetTodaysGames`, `GetFullSchedules`, `GetRecentResults`, and `GetStandings`) and do not add separate provider calls.
 - The committed UI uses the PG-style header mark with Flyers orange, Eagles teal, and Phillies red score bars.
