@@ -1444,12 +1444,12 @@ func preferredMLBHighlightItems(items []mlbContentItem) []mlbContentItem {
 		return nil
 	}
 	for _, item := range items {
-		if isMLBCondensedGame(item) {
+		if isMLBGameRecap(item) {
 			return []mlbContentItem{item}
 		}
 	}
 	for _, item := range items {
-		if isMLBGameRecap(item) {
+		if isMLBCondensedGame(item) {
 			return []mlbContentItem{item}
 		}
 	}
@@ -1457,16 +1457,25 @@ func preferredMLBHighlightItems(items []mlbContentItem) []mlbContentItem {
 }
 
 func isMLBCondensedGame(item mlbContentItem) bool {
-	text := strings.ToLower(firstNonEmpty(item.Title, item.Headline, item.Description, item.Blurb))
+	text := mlbHighlightSearchText(item)
 	return strings.Contains(text, "condensed game")
 }
 
 func isMLBGameRecap(item mlbContentItem) bool {
-	text := strings.ToLower(firstNonEmpty(item.Title, item.Headline, item.Description, item.Blurb))
+	text := mlbHighlightSearchText(item)
 	return strings.Contains(text, "recap") ||
 		strings.Contains(text, "highlights") ||
 		strings.Contains(text, "dominates in") ||
 		strings.Contains(text, "win vs.")
+}
+
+func mlbHighlightSearchText(item mlbContentItem) string {
+	return strings.ToLower(strings.Join([]string{
+		item.Title,
+		item.Headline,
+		item.Description,
+		item.Blurb,
+	}, " "))
 }
 
 func recentResultsTTL(results []models.RecentResult) time.Duration {

@@ -13,7 +13,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 - Upcoming schedule page
 - Full schedule page with team filtering, month controls, mobile agenda layout, and next-game jump behavior
 - Team directory plus team detail pages with live/next game, upcoming games, standings, and recent result
-- Post-game recap highlight links for recent results, preferring one condensed/game-highlights video when available
+- Post-game recap highlight links for recent results, preferring one short recap/game-highlights video when available
 - Stats/standings page
 - TV/stream guide with Philly-first broadcast sorting
 - Theme picker with Basic, Light, Dark, Midnight, and multiple Neon modes
@@ -119,7 +119,7 @@ Recent-result cards can show one official provider highlight link after a game e
 Provider behavior:
 
 - MLB/Phillies games use MLB StatsAPI content when available.
-- MLB videos prefer `Condensed Game`, then a game recap, then the first available MLB video.
+- MLB videos prefer a short game recap/highlights video, then `Condensed Game`, then the first available MLB video.
 - ESPN-backed videos for other sports prefer `Game Highlights`, `Match Highlights`, or `Extended Highlights`, then recap/highlights videos, then the first available video.
 - The app links to provider-hosted video URLs and does not download or rehost video.
 

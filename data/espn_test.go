@@ -775,13 +775,13 @@ func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 	if len(got[0].Highlights) != 1 {
 		t.Fatalf("Highlights = %#v, want 1 MLB highlight", got[0].Highlights)
 	}
-	if got[0].Highlights[0].Provider != "MLB" || got[0].Highlights[0].URL != "https://mlb.example/condensed.mp4" {
-		t.Fatalf("Highlight = %#v, want condensed MLB playback URL", got[0].Highlights[0])
+	if got[0].Highlights[0].Provider != "MLB" || got[0].Highlights[0].URL != "https://mlb.example/highlight.mp4" {
+		t.Fatalf("Highlight = %#v, want short MLB recap playback URL", got[0].Highlights[0])
 	}
-	if got[0].Highlights[0].Title != "Condensed Game: NYM@PHI - 5/31/26" {
-		t.Fatalf("Title = %q, want condensed game", got[0].Highlights[0].Title)
+	if got[0].Highlights[0].Title != "Phillies top Mets in series opener" {
+		t.Fatalf("Title = %q, want short game recap", got[0].Highlights[0].Title)
 	}
-	if got[0].Highlights[0].Thumbnail != "https://img.example/condensed.jpg" {
+	if got[0].Highlights[0].Thumbnail != "https://img.example/thumb.jpg" {
 		t.Fatalf("Thumbnail = %q, want largest provided image", got[0].Highlights[0].Thumbnail)
 	}
 }

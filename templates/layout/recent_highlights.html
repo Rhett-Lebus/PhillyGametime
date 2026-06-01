@@ -3,10 +3,12 @@
 <div class="recent-highlights">
   {{range .Highlights}}
   <a class="recent-highlight" href="{{.URL}}" target="_blank" rel="noopener noreferrer">
-    {{if .Thumbnail}}<img src="{{.Thumbnail}}" alt="" loading="lazy">{{end}}
+    <span class="recent-highlight__thumb">
+      {{if .Thumbnail}}<img src="{{.Thumbnail}}" alt="" loading="lazy">{{end}}
+    </span>
     <span>
       <strong>{{.Title}}</strong>
-      <small>{{.Provider}} highlights</small>
+      <small>Watch recap - {{.Provider}}</small>
     </span>
   </a>
   {{end}}
