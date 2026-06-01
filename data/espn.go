@@ -216,10 +216,29 @@ type espnStat struct {
 
 type espnSummaryResp struct {
 	Boxscore espnBoxscore `json:"boxscore"`
+	Videos   []espnVideo  `json:"videos"`
 }
 
 type espnBoxscore struct {
 	Players []espnBoxscoreTeam `json:"players"`
+}
+
+type espnVideo struct {
+	Headline    string `json:"headline"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Thumbnail   string `json:"thumbnail"`
+	Links       struct {
+		Web struct {
+			Href string `json:"href"`
+		} `json:"web"`
+		Source struct {
+			Href string `json:"href"`
+		} `json:"source"`
+	} `json:"links"`
+	Images []struct {
+		URL string `json:"url"`
+	} `json:"images"`
 }
 
 type espnBoxscoreTeam struct {
@@ -256,6 +275,32 @@ type mlbScheduleTeam struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"team"`
+}
+
+type mlbContentResp struct {
+	Highlights struct {
+		Highlights struct {
+			Items []mlbContentItem `json:"items"`
+		} `json:"highlights"`
+	} `json:"highlights"`
+}
+
+type mlbContentItem struct {
+	Title       string   `json:"title"`
+	Headline    string   `json:"headline"`
+	Blurb       string   `json:"blurb"`
+	Description string   `json:"description"`
+	Type        string   `json:"type"`
+	Date        espnTime `json:"date"`
+	Image       struct {
+		Cuts []struct {
+			Src string `json:"src"`
+		} `json:"cuts"`
+	} `json:"image"`
+	Playbacks []struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"playbacks"`
 }
 
 type mlbLiveFeedResp struct {
@@ -369,6 +414,7 @@ type aiRecapCacheFile struct {
 type sportCfg struct {
 	Sport         models.Sport
 	ScoreboardURL string
+	SummaryURL    string
 	ScheduleBase  string
 	StandingsURL  string
 	PhillyTeamIDs []string
@@ -378,6 +424,7 @@ var sportConfigs = []sportCfg{
 	{
 		Sport:         models.NFL,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=%s",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/football/nfl/standings",
 		PhillyTeamIDs: []string{"21"},
@@ -385,6 +432,7 @@ var sportConfigs = []sportCfg{
 	{
 		Sport:         models.MLB,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=%s",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/baseball/mlb/standings",
 		PhillyTeamIDs: []string{"22"},
@@ -392,6 +440,7 @@ var sportConfigs = []sportCfg{
 	{
 		Sport:         models.NBA,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=%s",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings",
 		PhillyTeamIDs: []string{"20"},
@@ -399,6 +448,7 @@ var sportConfigs = []sportCfg{
 	{
 		Sport:         models.NHL,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=%s",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings",
 		PhillyTeamIDs: []string{"4"},
@@ -406,6 +456,7 @@ var sportConfigs = []sportCfg{
 	{
 		Sport:         models.MLS,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/soccer/usa.1/summary?event=%s",
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/soccer/usa.1/standings",
 		PhillyTeamIDs: []string{"10739"},
@@ -479,6 +530,14 @@ type resultsCache struct {
 	expiresAt time.Time
 }
 
+type highlightsCacheEntry struct {
+	Highlights  []models.VideoHighlight
+	Pending     bool
+	CachedAt    time.Time
+	NextFetchAt time.Time
+	StopAfter   time.Time
+}
+
 type ESPNStore struct {
 	client         *http.Client
 	mu             sync.RWMutex
@@ -488,6 +547,7 @@ type ESPNStore struct {
 	standingsCache standingsCache
 	resultsCache   resultsCache
 	aiRecapCache   map[string]aiGameRecap
+	highlights     map[string]highlightsCacheEntry
 	aiInFlight     map[string]bool
 	aiCachePath    string
 }
@@ -495,12 +555,14 @@ type ESPNStore struct {
 var (
 	mlbScheduleURL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team"
 	mlbLiveFeedURL = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
+	mlbContentURL  = "https://statsapi.mlb.com/api/v1/game/%d/content?highlightLimit=8"
 )
 
 func NewESPNStore() *ESPNStore {
 	store := &ESPNStore{
 		client:       &http.Client{Timeout: 8 * time.Second},
 		aiRecapCache: map[string]aiGameRecap{},
+		highlights:   map[string]highlightsCacheEntry{},
 		aiInFlight:   map[string]bool{},
 		aiCachePath:  aiRecapCachePath(),
 	}
@@ -1161,6 +1223,7 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 						Bullets:  recentResultBullets(summary, phillyTeam, opponent),
 						GameDate: g.StartTime,
 					}
+					result = s.attachHighlights(cfg, g, result)
 					facts := gameRecapFacts{
 						Sport:              cfg.Sport,
 						PhillyTeam:         phillyTeam,
@@ -1213,7 +1276,7 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 	})
 
 	s.mu.Lock()
-	s.resultsCache = resultsCache{results: results, expiresAt: time.Now().Add(10 * time.Minute)}
+	s.resultsCache = resultsCache{results: results, expiresAt: time.Now().Add(recentResultsTTL(results))}
 	s.mu.Unlock()
 	return results
 }
@@ -1221,6 +1284,273 @@ func (s *ESPNStore) GetRecentResults() []models.RecentResult {
 func (s *ESPNStore) InvalidateRecentResults() {
 	s.mu.Lock()
 	s.resultsCache = resultsCache{}
+	s.mu.Unlock()
+}
+
+func (s *ESPNStore) attachHighlights(cfg sportCfg, g models.Game, result models.RecentResult) models.RecentResult {
+	if result.GameID == "" {
+		return result
+	}
+	now := time.Now()
+	s.mu.RLock()
+	entry, ok := s.highlights[result.GameID]
+	s.mu.RUnlock()
+	if ok && now.Before(entry.NextFetchAt) {
+		result.Highlights = entry.Highlights
+		result.HighlightsPending = entry.Pending
+		return result
+	}
+	if ok && len(entry.Highlights) == 0 && !entry.Pending && !entry.StopAfter.IsZero() && now.After(entry.StopAfter) {
+		return result
+	}
+
+	highlights := s.fetchGameHighlights(cfg, g)
+	entry = newHighlightsCacheEntry(highlights, g.StartTime, now)
+
+	s.mu.Lock()
+	s.highlights[result.GameID] = entry
+	s.mu.Unlock()
+
+	result.Highlights = entry.Highlights
+	result.HighlightsPending = entry.Pending
+	return result
+}
+
+func newHighlightsCacheEntry(highlights []models.VideoHighlight, gameDate, now time.Time) highlightsCacheEntry {
+	if len(highlights) > 0 {
+		return highlightsCacheEntry{
+			Highlights:  highlights,
+			CachedAt:    now,
+			NextFetchAt: now.Add(24 * time.Hour),
+			StopAfter:   gameDate.Add(48 * time.Hour),
+		}
+	}
+	stopAfter := gameDate.Add(48 * time.Hour)
+	pending := gameDate.IsZero() || now.Before(stopAfter)
+	next := now.Add(15 * time.Minute)
+	if !pending {
+		next = now.Add(24 * time.Hour)
+	}
+	return highlightsCacheEntry{
+		Pending:     pending,
+		CachedAt:    now,
+		NextFetchAt: next,
+		StopAfter:   stopAfter,
+	}
+}
+
+func (s *ESPNStore) fetchGameHighlights(cfg sportCfg, g models.Game) []models.VideoHighlight {
+	if cfg.Sport == models.MLB {
+		if highlights := s.fetchMLBHighlights(g); len(highlights) > 0 {
+			return highlights
+		}
+	}
+	if cfg.SummaryURL != "" {
+		return s.fetchESPNHighlights(cfg, g.ID)
+	}
+	return nil
+}
+
+func (s *ESPNStore) fetchESPNHighlights(cfg sportCfg, eventID string) []models.VideoHighlight {
+	var summary espnSummaryResp
+	if err := s.fetchJSON(fmt.Sprintf(cfg.SummaryURL, eventID), &summary); err != nil {
+		return nil
+	}
+	videos := preferredESPNVideos(summary.Videos)
+	out := make([]models.VideoHighlight, 0, len(videos))
+	for _, video := range videos {
+		h := models.VideoHighlight{
+			Title:       firstNonEmpty(video.Headline, video.Title),
+			Description: strings.TrimSpace(video.Description),
+			Thumbnail:   firstNonEmpty(video.Thumbnail, firstESPNImage(video.Images)),
+			URL:         firstNonEmpty(video.Links.Web.Href, video.Links.Source.Href),
+			Provider:    "ESPN",
+		}
+		if h.Title == "" {
+			h.Title = "Game highlights"
+		}
+		if h.URL == "" {
+			continue
+		}
+		out = append(out, h)
+	}
+	return dedupeHighlights(out)
+}
+
+func preferredESPNVideos(videos []espnVideo) []espnVideo {
+	if len(videos) == 0 {
+		return nil
+	}
+	for _, video := range videos {
+		if isESPNGameHighlights(video) {
+			return []espnVideo{video}
+		}
+	}
+	for _, video := range videos {
+		if isESPNRecapVideo(video) {
+			return []espnVideo{video}
+		}
+	}
+	return []espnVideo{videos[0]}
+}
+
+func isESPNGameHighlights(video espnVideo) bool {
+	text := strings.ToLower(firstNonEmpty(video.Headline, video.Title, video.Description))
+	return strings.Contains(text, "game highlights") ||
+		strings.Contains(text, "match highlights") ||
+		strings.Contains(text, "extended highlights")
+}
+
+func isESPNRecapVideo(video espnVideo) bool {
+	text := strings.ToLower(firstNonEmpty(video.Headline, video.Title, video.Description))
+	return strings.Contains(text, "recap") ||
+		strings.Contains(text, "highlights")
+}
+
+func (s *ESPNStore) fetchMLBHighlights(g models.Game) []models.VideoHighlight {
+	gamePk := s.findMLBGamePk(g)
+	if gamePk == 0 {
+		return nil
+	}
+	var content mlbContentResp
+	if err := s.fetchJSON(fmt.Sprintf(mlbContentURL, gamePk), &content); err != nil {
+		return nil
+	}
+	items := content.Highlights.Highlights.Items
+	preferredItems := preferredMLBHighlightItems(items)
+	out := make([]models.VideoHighlight, 0, len(preferredItems))
+	for _, item := range preferredItems {
+		h := models.VideoHighlight{
+			Title:       firstNonEmpty(item.Title, item.Headline),
+			Description: firstNonEmpty(item.Description, item.Blurb),
+			Thumbnail:   firstMLBImage(item.Image.Cuts),
+			URL:         bestMLBPlaybackURL(item.Playbacks),
+			Provider:    "MLB",
+			PublishedAt: item.Date.Time,
+		}
+		if h.Title == "" {
+			h.Title = "Game highlights"
+		}
+		if h.URL == "" {
+			continue
+		}
+		out = append(out, h)
+	}
+	return dedupeHighlights(out)
+}
+
+func preferredMLBHighlightItems(items []mlbContentItem) []mlbContentItem {
+	if len(items) == 0 {
+		return nil
+	}
+	for _, item := range items {
+		if isMLBCondensedGame(item) {
+			return []mlbContentItem{item}
+		}
+	}
+	for _, item := range items {
+		if isMLBGameRecap(item) {
+			return []mlbContentItem{item}
+		}
+	}
+	return []mlbContentItem{items[0]}
+}
+
+func isMLBCondensedGame(item mlbContentItem) bool {
+	text := strings.ToLower(firstNonEmpty(item.Title, item.Headline, item.Description, item.Blurb))
+	return strings.Contains(text, "condensed game")
+}
+
+func isMLBGameRecap(item mlbContentItem) bool {
+	text := strings.ToLower(firstNonEmpty(item.Title, item.Headline, item.Description, item.Blurb))
+	return strings.Contains(text, "recap") ||
+		strings.Contains(text, "highlights") ||
+		strings.Contains(text, "dominates in") ||
+		strings.Contains(text, "win vs.")
+}
+
+func recentResultsTTL(results []models.RecentResult) time.Duration {
+	for _, result := range results {
+		if result.HighlightsPending {
+			return 15 * time.Minute
+		}
+	}
+	return 10 * time.Minute
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstESPNImage(images []struct {
+	URL string `json:"url"`
+}) string {
+	for _, image := range images {
+		if image.URL != "" {
+			return strings.TrimSpace(image.URL)
+		}
+	}
+	return ""
+}
+
+func firstMLBImage(cuts []struct {
+	Src string `json:"src"`
+}) string {
+	for i := len(cuts) - 1; i >= 0; i-- {
+		if cuts[i].Src != "" {
+			return strings.TrimSpace(cuts[i].Src)
+		}
+	}
+	return ""
+}
+
+func bestMLBPlaybackURL(playbacks []struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}) string {
+	if len(playbacks) == 0 {
+		return ""
+	}
+	for _, want := range []string{"mp4Avc", "highBit", "HTTP_CLOUD_WIRED_WEB", "HTTP_CLOUD_WIRED"} {
+		for _, playback := range playbacks {
+			if strings.EqualFold(strings.TrimSpace(playback.Name), want) && strings.TrimSpace(playback.URL) != "" {
+				return strings.TrimSpace(playback.URL)
+			}
+		}
+	}
+	for _, playback := range playbacks {
+		if strings.TrimSpace(playback.URL) != "" {
+			return strings.TrimSpace(playback.URL)
+		}
+	}
+	return ""
+}
+
+func dedupeHighlights(highlights []models.VideoHighlight) []models.VideoHighlight {
+	seen := map[string]bool{}
+	out := make([]models.VideoHighlight, 0, len(highlights))
+	for _, h := range highlights {
+		key := h.URL
+		if key == "" {
+			key = h.Title
+		}
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, h)
+	}
+	return out
+}
+
+func (s *ESPNStore) InvalidateStandings() {
+	s.mu.Lock()
+	s.standingsCache = standingsCache{}
 	s.mu.Unlock()
 }
 

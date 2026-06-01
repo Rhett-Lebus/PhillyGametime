@@ -47,6 +47,7 @@
             <strong class="recent-record">{{.Record}}</strong>
           </div>
           {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
+          {{template "recent_highlights" .}}
         </div>
         {{else}}
         <div class="empty-inline">No recent completed Philly games returned.</div>

@@ -95,6 +95,9 @@ func publishScoreChanges(store data.Store, bus *events.Bus, interval time.Durati
 				if invalidator, ok := store.(interface{ InvalidateRecentResults() }); ok {
 					invalidator.InvalidateRecentResults()
 				}
+				if invalidator, ok := store.(interface{ InvalidateStandings() }); ok {
+					invalidator.InvalidateStandings()
+				}
 				bus.Publish(events.Event{Type: events.EventGameEnd, Payload: game})
 			}
 			previous[game.ID] = game

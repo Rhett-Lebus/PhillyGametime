@@ -491,6 +491,25 @@ func TestInvalidateRecentResultsClearsCache(t *testing.T) {
 	}
 }
 
+func TestInvalidateStandingsClearsCache(t *testing.T) {
+	store := NewESPNStore()
+	store.mu.Lock()
+	store.standingsCache = standingsCache{
+		rows:      []models.StandingsRow{{Team: Phillies, Record: "43-38"}},
+		expiresAt: time.Now().Add(time.Hour),
+	}
+	store.mu.Unlock()
+
+	store.InvalidateStandings()
+
+	store.mu.RLock()
+	expiresAt := store.standingsCache.expiresAt
+	store.mu.RUnlock()
+	if !expiresAt.IsZero() {
+		t.Fatalf("standings cache expiresAt = %v, want zero after invalidation", expiresAt)
+	}
+}
+
 func TestGetRecentResultsEnhancesOnlyDisplayedMostRecentPerTeam(t *testing.T) {
 	now := NowPhilly()
 	newerDate := now.AddDate(0, 0, -1)
@@ -665,6 +684,223 @@ func TestGetRecentResultsDoesNotCallOpenAIWithoutProviderSummary(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if atomic.LoadInt32(&openAICalls) != 0 {
 		t.Fatalf("OpenAI calls = %d, want 0 without provider summary", openAICalls)
+	}
+}
+
+func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
+	now := NowPhilly()
+	wantDate := now.Format("20060102")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/scoreboard":
+			if r.URL.Query().Get("dates") != wantDate {
+				_, _ = w.Write([]byte(`{"events":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+				"events": [{
+					"id": "espn-phillies-game",
+					"date": %q,
+					"competitions": [{
+						"competitors": [
+							{"homeAway": "home", "score": "6", "team": {"id": "22", "location": "Philadelphia", "name": "Phillies", "displayName": "Philadelphia Phillies", "abbreviation": "PHI"}},
+							{"homeAway": "away", "score": "4", "team": {"id": "21", "location": "New York", "name": "Mets", "displayName": "New York Mets", "abbreviation": "NYM"}}
+						],
+						"status": {"type": {"name": "STATUS_FINAL", "shortDetail": "Final"}}
+					}]
+				}]
+			}`, now.UTC().Format(time.RFC3339))))
+		case "/mlb/schedule":
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+				"dates": [{"games": [{
+					"gamePk": 123456,
+					"gameDate": %q,
+					"teams": {
+						"home": {"team": {"id": 143, "name": "Philadelphia Phillies"}},
+						"away": {"team": {"id": 121, "name": "New York Mets"}}
+					}
+				}]}]
+			}`, now.UTC().Format(time.RFC3339))))
+		case "/mlb/game/123456/content":
+			_, _ = w.Write([]byte(`{
+				"highlights": {"highlights": {"items": [{
+					"title": "Phillies top Mets in series opener",
+					"description": "Game recap",
+					"date": "2026-05-31T22:30:00Z",
+					"image": {"cuts": [{"src": "https://img.example/thumb-small.jpg"}, {"src": "https://img.example/thumb.jpg"}]},
+					"playbacks": [{"name": "HTTP_CLOUD_WIRED_WEB", "url": "https://mlb.example/highlight.mp4"}]
+				}, {
+					"title": "Condensed Game: NYM@PHI - 5/31/26",
+					"description": "Condensed game",
+					"date": "2026-05-31T23:30:00Z",
+					"image": {"cuts": [{"src": "https://img.example/condensed-small.jpg"}, {"src": "https://img.example/condensed.jpg"}]},
+					"playbacks": [{"name": "mp4Avc", "url": "https://mlb.example/condensed.mp4"}]
+				}, {
+					"title": "Bryson Stott's solo homer",
+					"playbacks": [{"name": "mp4Avc", "url": "https://mlb.example/stott.mp4"}]
+				}]}}
+			}`))
+		default:
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	originalConfigs := sportConfigs
+	originalScheduleURL := mlbScheduleURL
+	originalContentURL := mlbContentURL
+	sportConfigs = []sportCfg{{
+		Sport:         models.MLB,
+		ScoreboardURL: server.URL + "/scoreboard",
+		PhillyTeamIDs: []string{"22"},
+	}}
+	mlbScheduleURL = server.URL + "/mlb/schedule?date=%s"
+	mlbContentURL = server.URL + "/mlb/game/%d/content"
+	defer func() {
+		sportConfigs = originalConfigs
+		mlbScheduleURL = originalScheduleURL
+		mlbContentURL = originalContentURL
+	}()
+
+	store := NewESPNStore()
+	got := store.GetRecentResults()
+	if len(got) != 1 {
+		t.Fatalf("GetRecentResults() returned %d results, want 1: %#v", len(got), got)
+	}
+	if got[0].HighlightsPending {
+		t.Fatal("HighlightsPending = true, want false when a highlight is available")
+	}
+	if len(got[0].Highlights) != 1 {
+		t.Fatalf("Highlights = %#v, want 1 MLB highlight", got[0].Highlights)
+	}
+	if got[0].Highlights[0].Provider != "MLB" || got[0].Highlights[0].URL != "https://mlb.example/condensed.mp4" {
+		t.Fatalf("Highlight = %#v, want condensed MLB playback URL", got[0].Highlights[0])
+	}
+	if got[0].Highlights[0].Title != "Condensed Game: NYM@PHI - 5/31/26" {
+		t.Fatalf("Title = %q, want condensed game", got[0].Highlights[0].Title)
+	}
+	if got[0].Highlights[0].Thumbnail != "https://img.example/condensed.jpg" {
+		t.Fatalf("Thumbnail = %q, want largest provided image", got[0].Highlights[0].Thumbnail)
+	}
+}
+
+func TestPendingHighlightsRetryAfterNextFetch(t *testing.T) {
+	now := DatePhilly(2026, time.May, 31, 16, 0, 0)
+	var contentCalls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/mlb/schedule":
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+				"dates": [{"games": [{
+					"gamePk": 123456,
+					"gameDate": %q,
+					"teams": {
+						"home": {"team": {"id": 143, "name": "Philadelphia Phillies"}},
+						"away": {"team": {"id": 121, "name": "New York Mets"}}
+					}
+				}]}]
+			}`, now.UTC().Format(time.RFC3339))))
+		case "/mlb/game/123456/content":
+			call := atomic.AddInt32(&contentCalls, 1)
+			if call == 1 {
+				_, _ = w.Write([]byte(`{"highlights":{"highlights":{"items":[]}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{
+				"highlights": {"highlights": {"items": [{
+					"title": "Game recap",
+					"playbacks": [{"name": "HTTP_CLOUD_WIRED_WEB", "url": "https://mlb.example/recap.mp4"}]
+				}]}}
+			}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+
+	originalScheduleURL := mlbScheduleURL
+	originalContentURL := mlbContentURL
+	mlbScheduleURL = server.URL + "/mlb/schedule?date=%s"
+	mlbContentURL = server.URL + "/mlb/game/%d/content"
+	defer func() {
+		mlbScheduleURL = originalScheduleURL
+		mlbContentURL = originalContentURL
+	}()
+
+	store := NewESPNStore()
+	game := models.Game{
+		ID:        "espn-phillies-game",
+		HomeTeam:  Phillies,
+		AwayTeam:  Mets,
+		StartTime: now,
+		Sport:     models.MLB,
+	}
+	cfg := sportCfg{Sport: models.MLB}
+	result := models.RecentResult{GameID: game.ID, GameDate: now}
+
+	got := store.attachHighlights(cfg, game, result)
+	if !got.HighlightsPending || len(got.Highlights) != 0 {
+		t.Fatalf("First attach = pending %v highlights %#v, want pending with no highlights", got.HighlightsPending, got.Highlights)
+	}
+
+	got = store.attachHighlights(cfg, game, result)
+	if atomic.LoadInt32(&contentCalls) != 1 {
+		t.Fatalf("Content calls = %d, want 1 before retry time", contentCalls)
+	}
+	if !got.HighlightsPending {
+		t.Fatal("HighlightsPending = false before retry time, want true")
+	}
+
+	store.mu.Lock()
+	entry := store.highlights[game.ID]
+	entry.NextFetchAt = time.Now().Add(-time.Minute)
+	store.highlights[game.ID] = entry
+	store.mu.Unlock()
+
+	got = store.attachHighlights(cfg, game, result)
+	if atomic.LoadInt32(&contentCalls) != 2 {
+		t.Fatalf("Content calls = %d, want 2 after retry time", contentCalls)
+	}
+	if got.HighlightsPending || len(got.Highlights) != 1 || got.Highlights[0].URL != "https://mlb.example/recap.mp4" {
+		t.Fatalf("Retried attach = pending %v highlights %#v, want found highlight", got.HighlightsPending, got.Highlights)
+	}
+}
+
+func TestFetchESPNHighlightsPrefersGameHighlights(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"videos": [{
+				"headline": "Luis Suarez leads Inter Miami with hat trick in win",
+				"links": {"web": {"href": "https://espn.example/player-story"}}
+			}, {
+				"headline": "Inter Miami CF vs. Philadelphia Union - Game Highlights",
+				"description": "Watch the Game Highlights from Inter Miami CF vs. Philadelphia Union",
+				"thumbnail": "https://img.example/soccer.jpg",
+				"links": {"web": {"href": "https://espn.example/game-highlights"}}
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	store := NewESPNStore()
+	got := store.fetchESPNHighlights(sportCfg{
+		Sport:      models.MLS,
+		SummaryURL: server.URL + "/summary?event=%s",
+	}, "union-game")
+
+	if len(got) != 1 {
+		t.Fatalf("fetchESPNHighlights() returned %d highlights, want 1: %#v", len(got), got)
+	}
+	if got[0].URL != "https://espn.example/game-highlights" {
+		t.Fatalf("URL = %q, want game highlights URL", got[0].URL)
+	}
+	if got[0].Provider != "ESPN" {
+		t.Fatalf("Provider = %q, want ESPN", got[0].Provider)
 	}
 }
 

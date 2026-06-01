@@ -1,0 +1,17 @@
+{{define "recent_highlights"}}
+{{if .Highlights}}
+<div class="recent-highlights">
+  {{range .Highlights}}
+  <a class="recent-highlight" href="{{.URL}}" target="_blank" rel="noopener noreferrer">
+    {{if .Thumbnail}}<img src="{{.Thumbnail}}" alt="" loading="lazy">{{end}}
+    <span>
+      <strong>{{.Title}}</strong>
+      <small>{{.Provider}} highlights</small>
+    </span>
+  </a>
+  {{end}}
+</div>
+{{else if .HighlightsPending}}
+<div class="recent-highlights-pending">Highlights pending. Checking again soon.</div>
+{{end}}
+{{end}}

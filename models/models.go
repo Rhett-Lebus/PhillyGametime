@@ -88,13 +88,24 @@ type StandingsRow struct {
 }
 
 type RecentResult struct {
-	GameID   string
-	Team     Team
-	Opponent Team
-	Home     bool
-	Result   string    // "W", "L", "T"
-	Record   string    // display string e.g. "W 6-4"
-	Summary  string    // brief recap from provider or score data
-	Bullets  []string  // short recap bullets derived from Summary
-	GameDate time.Time // for sorting
+	GameID            string
+	Team              Team
+	Opponent          Team
+	Home              bool
+	Result            string           // "W", "L", "T"
+	Record            string           // display string e.g. "W 6-4"
+	Summary           string           // brief recap from provider or score data
+	Bullets           []string         // short recap bullets derived from Summary
+	Highlights        []VideoHighlight // official provider video links for this game
+	HighlightsPending bool             // true when a recent final game may still publish highlights
+	GameDate          time.Time        // for sorting
+}
+
+type VideoHighlight struct {
+	Title       string
+	Description string
+	Thumbnail   string
+	URL         string
+	Provider    string
+	PublishedAt time.Time
 }

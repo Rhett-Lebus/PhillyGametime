@@ -191,6 +191,7 @@ func (h *Handler) render(w http.ResponseWriter, page string, data interface{}) {
 		"templates/layout/base.html",
 		"templates/layout/header.html",
 		"templates/layout/footer.html",
+		"templates/layout/recent_highlights.html",
 		"templates/pages/"+page+".html",
 	)
 	if err != nil {
