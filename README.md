@@ -95,6 +95,8 @@ Environment variables:
 - `OPENAI_BASE_URL`: optional override for compatible APIs. Defaults to `https://api.openai.com/v1`.
 - `AI_RECAP_CACHE_PATH`: file path for persisted recap bullets. Defaults to `./ai-recap-cache.json`.
 - `AI_RECAP_CACHE_MAX_ENTRIES`: max successful game recaps to keep in the cache file. Defaults to `100`.
+- `HIGHLIGHT_CACHE_PATH`: file path for persisted post-game highlight lookup state. Defaults to `./highlight-cache.json`.
+- `HIGHLIGHT_CACHE_MAX_ENTRIES`: max game highlight entries to keep in the cache file. Defaults to `200`.
 
 Order of operations:
 
@@ -120,6 +122,7 @@ Provider behavior:
 
 - MLB/Phillies games use MLB StatsAPI content when available.
 - MLB videos prefer a short game recap/highlights video, then `Condensed Game`, then the first available MLB video.
+- MLB duration metadata is used to avoid very short single-play clips and long condensed games when a better recap is available.
 - ESPN-backed videos for other sports prefer `Game Highlights`, `Match Highlights`, or `Extended Highlights`, then recap/highlights videos, then the first available video.
 - The app links to provider-hosted video URLs and does not download or rehost video.
 
@@ -127,7 +130,7 @@ Retry behavior:
 
 - If a completed game has no video yet, the card can show `Highlights pending. Checking again soon.`
 - Pending highlights retry after about 15 minutes.
-- Found highlights are cached in memory for 24 hours.
+- Found highlights are cached for 24 hours and persisted to `HIGHLIGHT_CACHE_PATH`.
 - Games older than 48 hours stop retrying if no highlight was found.
 
 ## Build And Test

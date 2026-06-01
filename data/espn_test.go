@@ -380,6 +380,7 @@ func TestESPNGameStatusTreatsSoccerFullTimeAsFinal(t *testing.T) {
 func TestGetRecentResultsIncludesUnionWithoutUpcomingGame(t *testing.T) {
 	now := NowPhilly()
 	wantDate := now.AddDate(0, 0, -1).Format("20060102")
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -429,6 +430,7 @@ func TestGetRecentResultsIncludesUnionWithoutUpcomingGame(t *testing.T) {
 func TestGetRecentResultsIncludesTodaysFinalGames(t *testing.T) {
 	now := NowPhilly()
 	wantDate := now.Format("20060102")
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -514,6 +516,7 @@ func TestGetRecentResultsEnhancesOnlyDisplayedMostRecentPerTeam(t *testing.T) {
 	now := NowPhilly()
 	newerDate := now.AddDate(0, 0, -1)
 	olderDate := now.AddDate(0, 0, -2)
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 	newerKey := newerDate.Format("20060102")
 	olderKey := olderDate.Format("20060102")
 
@@ -632,6 +635,7 @@ func TestGetRecentResultsEnhancesOnlyDisplayedMostRecentPerTeam(t *testing.T) {
 func TestGetRecentResultsDoesNotCallOpenAIWithoutProviderSummary(t *testing.T) {
 	now := NowPhilly()
 	wantDate := now.Format("20060102")
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
 	var openAICalls int32
 	openAIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -690,6 +694,7 @@ func TestGetRecentResultsDoesNotCallOpenAIWithoutProviderSummary(t *testing.T) {
 func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 	now := NowPhilly()
 	wantDate := now.Format("20060102")
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -728,17 +733,20 @@ func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 				"highlights": {"highlights": {"items": [{
 					"title": "Phillies top Mets in series opener",
 					"description": "Game recap",
+					"duration": "00:03:15",
 					"date": "2026-05-31T22:30:00Z",
 					"image": {"cuts": [{"src": "https://img.example/thumb-small.jpg"}, {"src": "https://img.example/thumb.jpg"}]},
 					"playbacks": [{"name": "HTTP_CLOUD_WIRED_WEB", "url": "https://mlb.example/highlight.mp4"}]
 				}, {
 					"title": "Condensed Game: NYM@PHI - 5/31/26",
 					"description": "Condensed game",
+					"duration": "00:11:49",
 					"date": "2026-05-31T23:30:00Z",
 					"image": {"cuts": [{"src": "https://img.example/condensed-small.jpg"}, {"src": "https://img.example/condensed.jpg"}]},
 					"playbacks": [{"name": "mp4Avc", "url": "https://mlb.example/condensed.mp4"}]
 				}, {
 					"title": "Bryson Stott's solo homer",
+					"duration": "00:00:27",
 					"playbacks": [{"name": "mp4Avc", "url": "https://mlb.example/stott.mp4"}]
 				}]}}
 			}`))
@@ -789,6 +797,7 @@ func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 func TestPendingHighlightsRetryAfterNextFetch(t *testing.T) {
 	now := DatePhilly(2026, time.May, 31, 16, 0, 0)
 	var contentCalls int32
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -870,6 +879,65 @@ func TestPendingHighlightsRetryAfterNextFetch(t *testing.T) {
 	}
 }
 
+func TestPreferredMLBHighlightUsesDuration(t *testing.T) {
+	items := []mlbContentItem{
+		{Title: "Bryson Stott's solo homer", Duration: "00:00:27"},
+		{Title: "Condensed Game: NYM@PHI - 5/31/26", Duration: "00:11:49"},
+		{Title: "Phillies-Mets Game Highlights", Duration: "00:03:15"},
+	}
+
+	got := preferredMLBHighlightItems(items)
+	if len(got) != 1 || got[0].Title != "Phillies-Mets Game Highlights" {
+		t.Fatalf("preferredMLBHighlightItems() = %#v, want short game highlights", got)
+	}
+}
+
+func TestPreferredMLBHighlightAvoidsTinyRecapClip(t *testing.T) {
+	items := []mlbContentItem{
+		{Title: "Phillies recap", Duration: "00:00:31"},
+		{Title: "Condensed Game: NYM@PHI - 5/31/26", Duration: "00:11:49"},
+	}
+
+	got := preferredMLBHighlightItems(items)
+	if len(got) != 1 || got[0].Title != "Condensed Game: NYM@PHI - 5/31/26" {
+		t.Fatalf("preferredMLBHighlightItems() = %#v, want condensed fallback when only recap is tiny", got)
+	}
+}
+
+func TestHighlightCachePersistsToDisk(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "highlights.json")
+	t.Setenv("HIGHLIGHT_CACHE_PATH", cachePath)
+
+	store := NewESPNStore()
+	store.mu.Lock()
+	store.highlights["game-1"] = highlightsCacheEntry{
+		Highlights: []models.VideoHighlight{{
+			Title:    "Game recap",
+			URL:      "https://example.com/recap.mp4",
+			Provider: "MLB",
+		}},
+		CachedAt:    time.Now().UTC(),
+		NextFetchAt: time.Now().Add(24 * time.Hour).UTC(),
+		StopAfter:   time.Now().Add(48 * time.Hour).UTC(),
+	}
+	if err := store.saveHighlightCacheLocked(); err != nil {
+		store.mu.Unlock()
+		t.Fatalf("saveHighlightCacheLocked() error = %v", err)
+	}
+	store.mu.Unlock()
+
+	reloaded := NewESPNStore()
+	reloaded.mu.RLock()
+	entry, ok := reloaded.highlights["game-1"]
+	reloaded.mu.RUnlock()
+	if !ok {
+		t.Fatal("highlight cache did not load persisted game")
+	}
+	if len(entry.Highlights) != 1 || entry.Highlights[0].URL != "https://example.com/recap.mp4" {
+		t.Fatalf("Highlights = %#v, want persisted recap", entry.Highlights)
+	}
+}
+
 func TestFetchESPNHighlightsPrefersGameHighlights(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -905,6 +973,8 @@ func TestFetchESPNHighlightsPrefersGameHighlights(t *testing.T) {
 }
 
 func TestGetStandingsIncludesUnionWithoutUpcomingGame(t *testing.T) {
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {

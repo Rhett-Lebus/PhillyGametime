@@ -291,6 +291,7 @@ type mlbContentItem struct {
 	Blurb       string   `json:"blurb"`
 	Description string   `json:"description"`
 	Type        string   `json:"type"`
+	Duration    string   `json:"duration"`
 	Date        espnTime `json:"date"`
 	Image       struct {
 		Cuts []struct {
@@ -407,6 +408,11 @@ type openAIResponse struct {
 type aiRecapCacheFile struct {
 	Version int                    `json:"version"`
 	Recaps  map[string]aiGameRecap `json:"recaps"`
+}
+
+type highlightCacheFile struct {
+	Version int                             `json:"version"`
+	Games   map[string]highlightsCacheEntry `json:"games"`
 }
 
 // ── Sport config ──────────────────────────────────────────────────────────────
@@ -550,6 +556,7 @@ type ESPNStore struct {
 	highlights     map[string]highlightsCacheEntry
 	aiInFlight     map[string]bool
 	aiCachePath    string
+	highlightPath  string
 }
 
 var (
@@ -560,13 +567,15 @@ var (
 
 func NewESPNStore() *ESPNStore {
 	store := &ESPNStore{
-		client:       &http.Client{Timeout: 8 * time.Second},
-		aiRecapCache: map[string]aiGameRecap{},
-		highlights:   map[string]highlightsCacheEntry{},
-		aiInFlight:   map[string]bool{},
-		aiCachePath:  aiRecapCachePath(),
+		client:        &http.Client{Timeout: 8 * time.Second},
+		aiRecapCache:  map[string]aiGameRecap{},
+		highlights:    map[string]highlightsCacheEntry{},
+		aiInFlight:    map[string]bool{},
+		aiCachePath:   aiRecapCachePath(),
+		highlightPath: highlightCachePath(),
 	}
 	store.loadAIRecapCache()
+	store.loadHighlightCache()
 	return store
 }
 
@@ -1309,7 +1318,11 @@ func (s *ESPNStore) attachHighlights(cfg sportCfg, g models.Game, result models.
 
 	s.mu.Lock()
 	s.highlights[result.GameID] = entry
+	saveErr := s.saveHighlightCacheLocked()
 	s.mu.Unlock()
+	if saveErr != nil {
+		log.Printf("Highlight cache save failed for game %s: %v", result.GameID, saveErr)
+	}
 
 	result.Highlights = entry.Highlights
 	result.HighlightsPending = entry.Pending
@@ -1444,7 +1457,12 @@ func preferredMLBHighlightItems(items []mlbContentItem) []mlbContentItem {
 		return nil
 	}
 	for _, item := range items {
-		if isMLBGameRecap(item) {
+		if isMLBGameRecap(item) && isShortMLBRecapDuration(item.Duration) {
+			return []mlbContentItem{item}
+		}
+	}
+	for _, item := range items {
+		if isMLBGameRecap(item) && !isTinyMLBClip(item.Duration) {
 			return []mlbContentItem{item}
 		}
 	}
@@ -1476,6 +1494,39 @@ func mlbHighlightSearchText(item mlbContentItem) string {
 		item.Description,
 		item.Blurb,
 	}, " "))
+}
+
+func isShortMLBRecapDuration(duration string) bool {
+	seconds, ok := parseProviderDuration(duration)
+	if !ok {
+		return true
+	}
+	return seconds >= 60 && seconds <= 6*60
+}
+
+func isTinyMLBClip(duration string) bool {
+	seconds, ok := parseProviderDuration(duration)
+	return ok && seconds > 0 && seconds < 45
+}
+
+func parseProviderDuration(duration string) (int, bool) {
+	duration = strings.TrimSpace(duration)
+	if duration == "" {
+		return 0, false
+	}
+	parts := strings.Split(duration, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, false
+	}
+	total := 0
+	for _, part := range parts {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return 0, false
+		}
+		total = total*60 + value
+	}
+	return total, true
 }
 
 func recentResultsTTL(results []models.RecentResult) time.Duration {
@@ -1804,6 +1855,13 @@ func aiRecapCachePath() string {
 	return filepath.Join(".", "ai-recap-cache.json")
 }
 
+func highlightCachePath() string {
+	if path := strings.TrimSpace(os.Getenv("HIGHLIGHT_CACHE_PATH")); path != "" {
+		return path
+	}
+	return filepath.Join(".", "highlight-cache.json")
+}
+
 func (s *ESPNStore) loadAIRecapCache() {
 	if s.aiCachePath == "" {
 		return
@@ -1823,6 +1881,30 @@ func (s *ESPNStore) loadAIRecapCache() {
 	for gameID, recap := range cache.Recaps {
 		if gameID != "" {
 			s.aiRecapCache[gameID] = recap
+		}
+	}
+	s.mu.Unlock()
+}
+
+func (s *ESPNStore) loadHighlightCache() {
+	if s.highlightPath == "" {
+		return
+	}
+
+	body, err := os.ReadFile(s.highlightPath)
+	if err != nil {
+		return
+	}
+
+	var cache highlightCacheFile
+	if err := json.Unmarshal(body, &cache); err != nil || cache.Games == nil {
+		return
+	}
+
+	s.mu.Lock()
+	for gameID, entry := range cache.Games {
+		if gameID != "" {
+			s.highlights[gameID] = entry
 		}
 	}
 	s.mu.Unlock()
@@ -1855,6 +1937,33 @@ func (s *ESPNStore) saveAIRecapCacheLocked() error {
 	return os.Rename(tmpPath, s.aiCachePath)
 }
 
+func (s *ESPNStore) saveHighlightCacheLocked() error {
+	if s.highlightPath == "" {
+		return nil
+	}
+
+	s.pruneHighlightCacheLocked()
+
+	if err := os.MkdirAll(filepath.Dir(s.highlightPath), 0750); err != nil {
+		return err
+	}
+
+	cache := highlightCacheFile{
+		Version: 1,
+		Games:   s.highlights,
+	}
+	body, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmpPath := s.highlightPath + ".tmp"
+	if err := os.WriteFile(tmpPath, body, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.highlightPath)
+}
+
 func (s *ESPNStore) pruneAIRecapCacheLocked() {
 	maxEntries := aiRecapCacheMaxEntries()
 	if maxEntries <= 0 || len(s.aiRecapCache) <= maxEntries {
@@ -1881,6 +1990,28 @@ func (s *ESPNStore) pruneAIRecapCacheLocked() {
 	}
 }
 
+func (s *ESPNStore) pruneHighlightCacheLocked() {
+	maxEntries := highlightCacheMaxEntries()
+	if maxEntries <= 0 || len(s.highlights) <= maxEntries {
+		return
+	}
+
+	type cacheEntry struct {
+		gameID   string
+		cachedAt time.Time
+	}
+	entries := make([]cacheEntry, 0, len(s.highlights))
+	for gameID, entry := range s.highlights {
+		entries = append(entries, cacheEntry{gameID: gameID, cachedAt: entry.CachedAt})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].cachedAt.After(entries[j].cachedAt)
+	})
+	for _, entry := range entries[maxEntries:] {
+		delete(s.highlights, entry.gameID)
+	}
+}
+
 func aiRecapCacheMaxEntries() int {
 	raw := strings.TrimSpace(os.Getenv("AI_RECAP_CACHE_MAX_ENTRIES"))
 	if raw == "" {
@@ -1889,6 +2020,18 @@ func aiRecapCacheMaxEntries() int {
 	maxEntries, err := strconv.Atoi(raw)
 	if err != nil {
 		return 100
+	}
+	return maxEntries
+}
+
+func highlightCacheMaxEntries() int {
+	raw := strings.TrimSpace(os.Getenv("HIGHLIGHT_CACHE_MAX_ENTRIES"))
+	if raw == "" {
+		return 200
+	}
+	maxEntries, err := strconv.Atoi(raw)
+	if err != nil {
+		return 200
 	}
 	return maxEntries
 }
