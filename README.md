@@ -14,7 +14,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 - Full schedule page with team filtering, month controls, mobile agenda layout, and next-game jump behavior
 - Team directory plus team detail pages with live/next game, upcoming games, standings, and recent result
 - Post-game recap highlight links for recent results, preferring one short recap/game-highlights video when available
-- Stats/standings page
+- Stats/standings page with league standings by sport plus division/conference/full-league scopes when available
 - TV/stream guide with Philly-first broadcast sorting
 - Theme picker with Basic, Light, Dark, Midnight, and multiple Neon modes
 - Server-sent events endpoint for score and sport-specific event hooks
@@ -130,7 +130,8 @@ Retry behavior:
 
 - If a completed game has no video yet, the card can show `Highlights pending. Checking again soon.`
 - Pending highlights retry after about 15 minutes.
-- Found highlights are cached for 24 hours and persisted to `HIGHLIGHT_CACHE_PATH`.
+- Found highlights refresh about every 45 minutes for the first 12 hours after game time so a better recap can replace an early clip.
+- After that upgrade window, found highlights are cached for 24 hours and persisted to `HIGHLIGHT_CACHE_PATH`.
 - Games older than 48 hours stop retrying if no highlight was found.
 
 ## Build And Test

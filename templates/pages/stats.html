@@ -7,28 +7,80 @@
 <div class="home-layout">
   <section class="section main-content">
     <div class="section-heading">
-      <h2>Standings</h2>
+      <h2>League Standings</h2>
     </div>
-    <div class="sidebar-section stats-panel">
-      <table class="standings-table standings-table--large">
+    <div class="sidebar-section stats-panel league-standings-panel">
+      {{if .LeagueStandings}}
+      <div class="league-controls">
+        <label class="league-picker">
+          <span>Team</span>
+          <select id="league-sport-select" aria-label="Team standings sport">
+            {{range .LeagueStandings}}
+            <option value="{{.Sport}}" {{if .Active}}selected{{end}}>{{.Label}}</option>
+            {{end}}
+          </select>
+        </label>
+      </div>
+
+      {{range .LeagueStandings}}
+      <section class="league-standings" data-league-sport="{{.Sport}}" {{if not .Active}}hidden{{end}}>
+        <div class="league-scope-control">
+          <label class="league-picker league-picker--scope">
+            <span>View</span>
+            <select data-league-scope-select aria-label="{{.Label}} standings view">
+              {{range .Views}}
+              <option value="{{.Key}}" {{if .Active}}selected{{end}}>{{.Scope}} - {{.Label}}</option>
+              {{end}}
+            </select>
+          </label>
+        </div>
+
+        {{range .Views}}
+        <div class="league-scope" data-league-scope-panel="{{.Key}}" {{if not .Active}}hidden{{end}}>
+          <table class="standings-table standings-table--large standings-table--league">
+            <thead><tr><th>Rank</th><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
+            <tbody>
+              {{range .Rows}}
+              <tr class="{{if isPhilly .Team}}standings-row--philly{{end}}" style="--team-color:{{.Team.Primary}}">
+                <td><span class="stat-value">{{if .Rank}}{{.Rank}}{{else}}-{{end}}</span></td>
+                <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.City}} {{.Team.Name}}</span></td>
+                <td><span class="stat-value">{{.Record}}</span></td>
+                <td><span class="stat-value">{{.Home}}</span></td>
+                <td><span class="stat-value">{{.Away}}</span></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{end}}
+      </section>
+      {{end}}
+      {{else}}
+      <div class="empty-inline">No league standings returned by the provider right now.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <section class="sidebar-section">
+      <h3>Philly Snapshot</h3>
+      <table class="standings-table">
         <thead><tr><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
         <tbody>
           {{range .Standings}}
           <tr style="--team-color:{{.Team.Primary}}">
-            <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.City}} {{.Team.Name}}</span></td>
+            <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.Name}}</span></td>
             <td><span class="stat-value">{{.Record}}</span></td>
             <td><span class="stat-value">{{.Home}}</span></td>
             <td><span class="stat-value">{{.Away}}</span></td>
           </tr>
           {{else}}
-          <tr><td colspan="4">No live standings returned by the provider right now.</td></tr>
+          <tr><td colspan="4">No live standings returned.</td></tr>
           {{end}}
         </tbody>
       </table>
-    </div>
-  </section>
+    </section>
 
-  <aside class="sidebar">
     <section class="sidebar-section">
       <h3>Recent Results</h3>
       <div class="recent-list">

@@ -176,6 +176,44 @@
     window.addEventListener('hashchange', () => showTeam(window.location.hash.replace('#', ''), false, true));
   }
 
+  function initLeagueStandingsPicker() {
+    const select = document.getElementById('league-sport-select');
+    const sections = Array.from(document.querySelectorAll('[data-league-sport]'));
+    if (!select || sections.length === 0) return;
+
+    const showScope = (section, scope) => {
+      const panels = Array.from(section.querySelectorAll('[data-league-scope-panel]'));
+      const scopeSelect = section.querySelector('[data-league-scope-select]');
+      const selected = panels.some((panel) => panel.dataset.leagueScopePanel === scope)
+        ? scope
+        : (panels[0] ? panels[0].dataset.leagueScopePanel : '');
+
+      if (scopeSelect && selected) scopeSelect.value = selected;
+      panels.forEach((panel) => {
+        panel.hidden = panel.dataset.leagueScopePanel !== selected;
+      });
+    };
+
+    const showSport = (sport) => {
+      sections.forEach((section) => {
+        const active = section.dataset.leagueSport === sport;
+        section.hidden = !active;
+        if (active) {
+          const scopeSelect = section.querySelector('[data-league-scope-select]');
+          const firstPanel = section.querySelector('[data-league-scope-panel]');
+          showScope(section, scopeSelect ? scopeSelect.value : (firstPanel ? firstPanel.dataset.leagueScopePanel : ''));
+        }
+      });
+    };
+
+    sections.forEach((section) => {
+      const scopeSelect = section.querySelector('[data-league-scope-select]');
+      if (scopeSelect) scopeSelect.addEventListener('change', () => showScope(section, scopeSelect.value));
+    });
+    select.addEventListener('change', () => showSport(select.value));
+    showSport(select.value);
+  }
+
   function ensureBaseballCurrentPlay(baseball) {
     let current = baseball.querySelector('.baseball-current-play');
     if (current) return current;
@@ -395,6 +433,7 @@
     updateScheduleControlsHeight();
   });
   initSchedulePicker();
+  initLeagueStandingsPicker();
   pollScores();
   setInterval(pollScores, POLL_INTERVAL);
 

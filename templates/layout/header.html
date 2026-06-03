@@ -18,15 +18,13 @@
       <a href="/tv" class="nav-link {{if eq .NavActive "tv"}}active{{end}}">TV / Stream</a>
     </nav>
 
-    <form class="search-form" action="/scores" method="get">
-      <input type="search" name="q" placeholder="Search teams" class="search-input" aria-label="Search teams">
-      <button type="submit" class="icon-button" aria-label="Search">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="7"></circle>
-          <path d="m20 20-3.5-3.5"></path>
-        </svg>
-      </button>
-    </form>
+    <nav class="team-quick-pick" aria-label="Team quick links">
+      <a href="/teams/eagles" style="--team-color:#004C54" aria-label="Eagles"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt=""></a>
+      <a href="/teams/flyers" style="--team-color:#F74902" aria-label="Flyers"><img src="https://a.espncdn.com/i/teamlogos/nhl/500/phi.png" alt=""></a>
+      <a href="/teams/phillies" style="--team-color:#E81828" aria-label="Phillies"><img src="https://a.espncdn.com/i/teamlogos/mlb/500/phi.png" alt=""></a>
+      <a href="/teams/sixers" style="--team-color:#006BB6" aria-label="76ers"><img src="https://a.espncdn.com/i/teamlogos/nba/500/phi.png" alt=""></a>
+      <a href="/teams/union" style="--team-color:#071B2C" aria-label="Union"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/10739.png" alt=""></a>
+    </nav>
 
     {{if .ShowThemePicker}}
       <label class="theme-picker" aria-label="Theme">

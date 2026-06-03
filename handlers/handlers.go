@@ -315,10 +315,26 @@ type TeamDetailData struct {
 
 type StatsData struct {
 	LayoutData
-	NavActive string
-	Title     string
-	Standings []models.StandingsRow
-	Recent    []models.RecentResult
+	NavActive       string
+	Title           string
+	Standings       []models.StandingsRow
+	LeagueStandings []LeagueStandingsView
+	Recent          []models.RecentResult
+}
+
+type LeagueStandingsView struct {
+	Sport  models.Sport
+	Label  string
+	Active bool
+	Views  []LeagueScopeView
+}
+
+type LeagueScopeView struct {
+	Key    string
+	Label  string
+	Scope  string
+	Active bool
+	Rows   []models.StandingsRow
 }
 
 type TVData struct {
@@ -591,11 +607,76 @@ func sameTeam(a, b models.Team) bool {
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "stats", StatsData{
-		NavActive: "stats",
-		Title:     "Stats",
-		Standings: h.store.GetStandings(),
-		Recent:    h.store.GetRecentResults(),
+		NavActive:       "stats",
+		Title:           "Stats",
+		Standings:       h.store.GetStandings(),
+		LeagueStandings: buildLeagueStandingsViews(h.store.GetLeagueStandings()),
+		Recent:          h.store.GetRecentResults(),
 	})
+}
+
+func buildLeagueStandingsViews(leagues []models.LeagueStandings) []LeagueStandingsView {
+	views := make([]LeagueStandingsView, 0, len(leagues))
+	for _, league := range leagues {
+		if len(league.Views) == 0 {
+			continue
+		}
+		scopeViews := make([]LeagueScopeView, 0, len(league.Views))
+		activeScope := preferredLeagueScope(league.Views)
+		for _, view := range league.Views {
+			if len(view.Rows) == 0 {
+				continue
+			}
+			scopeViews = append(scopeViews, LeagueScopeView{
+				Key:    view.Key,
+				Label:  view.Label,
+				Scope:  view.Scope,
+				Active: view.Key == activeScope,
+				Rows:   view.Rows,
+			})
+		}
+		if len(scopeViews) == 0 {
+			continue
+		}
+		views = append(views, LeagueStandingsView{
+			Sport:  league.Sport,
+			Label:  teamLabelForSport(league.Sport),
+			Active: len(views) == 0,
+			Views:  scopeViews,
+		})
+	}
+	return views
+}
+
+func preferredLeagueScope(views []models.StandingsView) string {
+	for _, key := range []string{"division", "conference", "league", "overall"} {
+		for _, view := range views {
+			if strings.HasPrefix(view.Key, key) && len(view.Rows) > 0 {
+				return view.Key
+			}
+		}
+	}
+	if len(views) == 0 {
+		return ""
+	}
+	return views[0].Key
+}
+
+func teamLabelForSport(sport models.Sport) string {
+	switch sport {
+	case models.NFL:
+		return "Eagles"
+	case models.NHL:
+		return "Flyers"
+	case models.MLB:
+		return "Phillies"
+	case models.NBA:
+		return "76ers"
+	case models.MLS:
+		return "Union"
+	default:
+		return string(sport)
+	}
 }
 
 func (h *Handler) TV(w http.ResponseWriter, r *http.Request) {

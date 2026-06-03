@@ -9,6 +9,7 @@ type Store interface {
 	GetUpcomingGames() []models.Game
 	GetFullSchedules() []models.TeamSchedule
 	GetStandings() []models.StandingsRow
+	GetLeagueStandings() []models.LeagueStandings
 	GetRecentResults() []models.RecentResult
 	GetTeams() []models.Team
 	GetGameByID(id string) (*models.Game, bool)

@@ -795,7 +795,7 @@ func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 }
 
 func TestPendingHighlightsRetryAfterNextFetch(t *testing.T) {
-	now := DatePhilly(2026, time.May, 31, 16, 0, 0)
+	now := NowPhilly().Add(-24 * time.Hour)
 	var contentCalls int32
 	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
 
@@ -876,6 +876,109 @@ func TestPendingHighlightsRetryAfterNextFetch(t *testing.T) {
 	}
 	if got.HighlightsPending || len(got.Highlights) != 1 || got.Highlights[0].URL != "https://mlb.example/recap.mp4" {
 		t.Fatalf("Retried attach = pending %v highlights %#v, want found highlight", got.HighlightsPending, got.Highlights)
+	}
+}
+
+func TestFoundHighlightsRefreshDuringUpgradeWindow(t *testing.T) {
+	now := time.Date(2026, 6, 2, 22, 0, 0, 0, time.UTC)
+	entry := newHighlightsCacheEntry([]models.VideoHighlight{{
+		Title: "Game recap",
+		URL:   "https://example.com/recap.mp4",
+	}}, now.Add(-2*time.Hour), now)
+
+	want := now.Add(highlightUpgradeRetry)
+	if !entry.NextFetchAt.Equal(want) {
+		t.Fatalf("NextFetchAt = %v, want %v during upgrade window", entry.NextFetchAt, want)
+	}
+}
+
+func TestFoundHighlightsUseDailyCacheAfterUpgradeWindow(t *testing.T) {
+	now := time.Date(2026, 6, 2, 22, 0, 0, 0, time.UTC)
+	entry := newHighlightsCacheEntry([]models.VideoHighlight{{
+		Title: "Game recap",
+		URL:   "https://example.com/recap.mp4",
+	}}, now.Add(-13*time.Hour), now)
+
+	want := now.Add(highlightFoundTTL)
+	if !entry.NextFetchAt.Equal(want) {
+		t.Fatalf("NextFetchAt = %v, want %v after upgrade window", entry.NextFetchAt, want)
+	}
+}
+
+func TestFoundHighlightsEmptyRefreshKeepsExistingVideo(t *testing.T) {
+	now := NowPhilly()
+	var contentCalls int32
+	t.Setenv("HIGHLIGHT_CACHE_PATH", filepath.Join(t.TempDir(), "highlights.json"))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/mlb/schedule":
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
+				"dates": [{"games": [{
+					"gamePk": 123456,
+					"gameDate": %q,
+					"teams": {
+						"home": {"team": {"id": 143, "name": "Philadelphia Phillies"}},
+						"away": {"team": {"id": 121, "name": "New York Mets"}}
+					}
+				}]}]
+			}`, now.UTC().Format(time.RFC3339))))
+		case "/mlb/game/123456/content":
+			call := atomic.AddInt32(&contentCalls, 1)
+			if call == 1 {
+				_, _ = w.Write([]byte(`{
+					"highlights": {"highlights": {"items": [{
+						"title": "Game recap",
+						"playbacks": [{"name": "HTTP_CLOUD_WIRED_WEB", "url": "https://mlb.example/recap.mp4"}]
+					}]}}
+				}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"highlights":{"highlights":{"items":[]}}}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+
+	originalScheduleURL := mlbScheduleURL
+	originalContentURL := mlbContentURL
+	mlbScheduleURL = server.URL + "/mlb/schedule?date=%s"
+	mlbContentURL = server.URL + "/mlb/game/%d/content"
+	defer func() {
+		mlbScheduleURL = originalScheduleURL
+		mlbContentURL = originalContentURL
+	}()
+
+	store := NewESPNStore()
+	game := models.Game{
+		ID:        "espn-phillies-game",
+		HomeTeam:  Phillies,
+		AwayTeam:  Mets,
+		StartTime: now.Add(-2 * time.Hour),
+		Sport:     models.MLB,
+	}
+	cfg := sportCfg{Sport: models.MLB}
+	result := models.RecentResult{GameID: game.ID, GameDate: game.StartTime}
+
+	got := store.attachHighlights(cfg, game, result)
+	if got.HighlightsPending || len(got.Highlights) != 1 || got.Highlights[0].URL != "https://mlb.example/recap.mp4" {
+		t.Fatalf("First attach = pending %v highlights %#v, want found highlight", got.HighlightsPending, got.Highlights)
+	}
+
+	store.mu.Lock()
+	entry := store.highlights[game.ID]
+	entry.NextFetchAt = time.Now().Add(-time.Minute)
+	store.highlights[game.ID] = entry
+	store.mu.Unlock()
+
+	got = store.attachHighlights(cfg, game, result)
+	if atomic.LoadInt32(&contentCalls) != 2 {
+		t.Fatalf("Content calls = %d, want refresh attempt", contentCalls)
+	}
+	if got.HighlightsPending || len(got.Highlights) != 1 || got.Highlights[0].URL != "https://mlb.example/recap.mp4" {
+		t.Fatalf("Empty refresh = pending %v highlights %#v, want existing highlight kept", got.HighlightsPending, got.Highlights)
 	}
 }
 
@@ -1084,6 +1187,197 @@ func TestGetStandingsIncludesUnionWithoutUpcomingGame(t *testing.T) {
 	if got[0].Record != "1-10-4" || got[0].Home != "1-0-1" || got[0].Away != "0-1-0" {
 		t.Fatalf("Union standings = record %q home %q away %q, want 1-10-4 / 1-0-1 / 0-1-0", got[0].Record, got[0].Home, got[0].Away)
 	}
+}
+
+func TestStandingsEntryToRowUsesDisplayHomeAwayRecords(t *testing.T) {
+	entry := espnStandingsEntry{
+		Team: espnTeam{ID: "20", Location: "Philadelphia", Name: "76ers", Abbreviation: "PHI"},
+		Stats: []espnStat{
+			{Name: "wins", Value: 37},
+			{Name: "losses", Value: 28},
+			{Name: "home", DisplayValue: "22-10"},
+			{Name: "road", DisplayValue: "15-18"},
+		},
+	}
+
+	got := standingsEntryToRow(entry, models.NBA)
+	if got.Record != "37-28" || got.Home != "22-10" || got.Away != "15-18" {
+		t.Fatalf("NBA row = record %q home %q away %q, want 37-28 / 22-10 / 15-18", got.Record, got.Home, got.Away)
+	}
+}
+
+func TestStandingsEntryToRowIncludesProviderRank(t *testing.T) {
+	entry := standingsEntryWithRank("20", "Philadelphia", "76ers", 37, 28, 7)
+
+	got := standingsEntryToRow(entry, models.NBA)
+	if got.Rank != "7" {
+		t.Fatalf("Rank = %q, want 7", got.Rank)
+	}
+}
+
+func TestStandingsEntryToRowUsesNHLDisplayHomeAwayRecords(t *testing.T) {
+	entry := espnStandingsEntry{
+		Team: espnTeam{ID: "15", Location: "Philadelphia", Name: "Flyers", Abbreviation: "PHI"},
+		Stats: []espnStat{
+			{Name: "wins", Value: 32},
+			{Name: "losses", Value: 32},
+			{Name: "otLosses", Value: 11},
+			{Name: "home", DisplayValue: "18-14-6"},
+			{Name: "away", DisplayValue: "14-18-5"},
+		},
+	}
+
+	got := standingsEntryToRow(entry, models.NHL)
+	if got.Record != "32-32-11" || got.Home != "18-14-6" || got.Away != "14-18-5" {
+		t.Fatalf("NHL row = record %q home %q away %q, want 32-32-11 / 18-14-6 / 14-18-5", got.Record, got.Home, got.Away)
+	}
+}
+
+func TestLeagueStandingsKeepsConferenceAndOverallViewsDistinct(t *testing.T) {
+	resp := espnStandingsResp{
+		Children: []espnStandingsGroup{
+			{
+				Name: "Eastern Conference",
+				Standings: espnStandingsData{Entries: []espnStandingsEntry{
+					standingsEntry("20", "Philadelphia", "76ers", 37, 28),
+					standingsEntry("2", "Boston", "Celtics", 50, 15),
+				}},
+			},
+			{
+				Name: "Western Conference",
+				Standings: espnStandingsData{Entries: []espnStandingsEntry{
+					standingsEntry("13", "Los Angeles", "Lakers", 44, 21),
+				}},
+			},
+		},
+	}
+
+	got := leagueStandingsFromResponse(sportCfg{Sport: models.NBA, PhillyTeamIDs: []string{"20"}}, resp)
+	if len(got.Views) != 3 {
+		t.Fatalf("views = %#v, want division, conference, and overall", got.Views)
+	}
+	if got.Views[0].Key != "division-atlantic" || got.Views[0].Label != "Atlantic" || len(got.Views[0].Rows) != 2 {
+		t.Fatalf("division view = %#v, want Atlantic with 2 fixture rows", got.Views[0])
+	}
+	if got.Views[1].Key != "conference-eastern-conference" || got.Views[1].Label != "Eastern Conference" || len(got.Views[1].Rows) != 2 {
+		t.Fatalf("conference view = %#v, want Eastern Conference with 2 rows", got.Views[1])
+	}
+	if got.Views[2].Key != "overall-nba" || got.Views[2].Label != "NBA" || len(got.Views[2].Rows) != 3 {
+		t.Fatalf("overall view = %#v, want NBA overall with 3 rows", got.Views[2])
+	}
+}
+
+func TestStandingsRowsFromEntriesPreservesProviderOrderWithoutRank(t *testing.T) {
+	rows := standingsRowsFromEntries([]espnStandingsEntry{
+		standingsEntry("1", "Team", "Middle", 40, 30),
+		standingsEntry("2", "Team", "Top", 50, 20),
+		standingsEntry("3", "Team", "Bottom", 25, 45),
+	}, models.NBA, standingsSortGroup)
+
+	if got := []string{rows[0].Team.Name, rows[1].Team.Name, rows[2].Team.Name}; got[0] != "Middle" || got[1] != "Top" || got[2] != "Bottom" {
+		t.Fatalf("sorted teams = %#v, want provider order Middle, Top, Bottom", got)
+	}
+}
+
+func TestStandingsRowsFromEntriesUsesProviderRankWhenAvailable(t *testing.T) {
+	rows := standingsRowsFromEntries([]espnStandingsEntry{
+		standingsEntryWithRank("1", "Team", "Second", 45, 20, 2),
+		standingsEntryWithRank("2", "Team", "First", 43, 22, 1),
+	}, models.NHL, standingsSortGroup)
+
+	if got := []string{rows[0].Team.Name, rows[1].Team.Name}; got[0] != "First" || got[1] != "Second" {
+		t.Fatalf("ranked teams = %#v, want First, Second", got)
+	}
+}
+
+func TestOverallStandingsSortIgnoresConferenceSeed(t *testing.T) {
+	rows := standingsRowsFromEntries([]espnStandingsEntry{
+		standingsEntryWithRank("1", "East", "Low Seed Better Record", 60, 22, 8),
+		standingsEntryWithRank("2", "West", "Top Seed Worse Record", 45, 37, 1),
+	}, models.NBA, standingsSortOverall)
+
+	if got := []string{rows[0].Team.Name, rows[1].Team.Name}; got[0] != "Low Seed Better Record" || got[1] != "Top Seed Worse Record" {
+		t.Fatalf("overall teams = %#v, want league-wide record order independent of conference seed", got)
+	}
+	if rows[0].Rank != "1" || rows[1].Rank != "2" {
+		t.Fatalf("overall ranks = %q/%q, want recalculated 1/2", rows[0].Rank, rows[1].Rank)
+	}
+}
+
+func TestPhillyDivisionStandingsUsesFlyersID(t *testing.T) {
+	division := phillyDivisionStandings(models.NHL, []espnStandingsEntry{
+		standingsEntryWithPoints("4", "Chicago", "Blackhawks", 29, 39, 72),
+		standingsEntryWithPoints("15", "Philadelphia", "Flyers", 43, 27, 98),
+		standingsEntryWithPoints("16", "Pittsburgh", "Penguins", 41, 25, 98),
+	})
+
+	if division.label != "Metropolitan" {
+		t.Fatalf("division label = %q, want Metropolitan", division.label)
+	}
+	if len(division.entries) != 2 {
+		t.Fatalf("division entries = %#v, want Flyers and Penguins only", division.entries)
+	}
+	for _, entry := range division.entries {
+		if entry.Team.ID == "4" {
+			t.Fatal("Metropolitan division included Chicago id 4")
+		}
+	}
+}
+
+func TestCanonicalPhillyTeamDoesNotTreatChicagoAsFlyers(t *testing.T) {
+	got := canonicalPhillyTeam(models.Team{
+		ID:    "4",
+		City:  "Chicago",
+		Name:  "Blackhawks",
+		Abbr:  "CHI",
+		Sport: models.NHL,
+	})
+	if got.City == "Philadelphia" || got.Name == "Flyers" {
+		t.Fatalf("canonicalPhillyTeam mapped NHL id 4 to Flyers: %#v", got)
+	}
+
+	flyers := canonicalPhillyTeam(models.Team{
+		ID:    "15",
+		City:  "Philadelphia",
+		Name:  "Flyers",
+		Abbr:  "PHI",
+		Sport: models.NHL,
+	})
+	if flyers.City != "Philadelphia" || flyers.Name != "Flyers" {
+		t.Fatalf("canonicalPhillyTeam did not map NHL id 15 to Flyers: %#v", flyers)
+	}
+}
+
+func TestSportOrderMatchesStandardTeamOrder(t *testing.T) {
+	sports := []models.Sport{models.NFL, models.NHL, models.MLB, models.NBA, models.MLS}
+	for i, sport := range sports {
+		if got := sportOrder(sport); got != i {
+			t.Fatalf("sportOrder(%s) = %d, want %d", sport, got, i)
+		}
+	}
+}
+
+func standingsEntry(id, city, name string, wins, losses float64) espnStandingsEntry {
+	return espnStandingsEntry{
+		Team: espnTeam{ID: id, Location: city, Name: name, Abbreviation: strings.ToUpper(id)},
+		Stats: []espnStat{
+			{Name: "wins", Value: wins},
+			{Name: "losses", Value: losses},
+			{Name: "winPercent", Value: wins / (wins + losses)},
+		},
+	}
+}
+
+func standingsEntryWithRank(id, city, name string, wins, losses, rank float64) espnStandingsEntry {
+	entry := standingsEntry(id, city, name, wins, losses)
+	entry.Stats = append(entry.Stats, espnStat{Name: "playoffSeed", Value: rank})
+	return entry
+}
+
+func standingsEntryWithPoints(id, city, name string, wins, losses, points float64) espnStandingsEntry {
+	entry := standingsEntry(id, city, name, wins, losses)
+	entry.Stats = append(entry.Stats, espnStat{Name: "points", Value: points})
+	return entry
 }
 
 func TestGenerateAIRecapParsesStructuredResponse(t *testing.T) {

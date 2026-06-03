@@ -210,6 +210,9 @@ type espnStandingsEntry struct {
 
 type espnStat struct {
 	Name         string  `json:"name"`
+	Abbreviation string  `json:"abbreviation"`
+	DisplayName  string  `json:"displayName"`
+	ShortName    string  `json:"shortName"`
 	Value        float64 `json:"value"`
 	DisplayValue string  `json:"displayValue"`
 }
@@ -436,6 +439,14 @@ var sportConfigs = []sportCfg{
 		PhillyTeamIDs: []string{"21"},
 	},
 	{
+		Sport:         models.NHL,
+		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=%s",
+		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/",
+		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings",
+		PhillyTeamIDs: []string{"15"},
+	},
+	{
 		Sport:         models.MLB,
 		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
 		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=%s",
@@ -450,14 +461,6 @@ var sportConfigs = []sportCfg{
 		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/",
 		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings",
 		PhillyTeamIDs: []string{"20"},
-	},
-	{
-		Sport:         models.NHL,
-		ScoreboardURL: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
-		SummaryURL:    "https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/summary?event=%s",
-		ScheduleBase:  "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/",
-		StandingsURL:  "https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings",
-		PhillyTeamIDs: []string{"4"},
 	},
 	{
 		Sport:         models.MLS,
@@ -531,6 +534,11 @@ type standingsCache struct {
 	expiresAt time.Time
 }
 
+type leagueStandingsCache struct {
+	leagues   []models.LeagueStandings
+	expiresAt time.Time
+}
+
 type resultsCache struct {
 	results   []models.RecentResult
 	expiresAt time.Time
@@ -544,6 +552,14 @@ type highlightsCacheEntry struct {
 	StopAfter   time.Time
 }
 
+const (
+	highlightPendingRetry  = 15 * time.Minute
+	highlightUpgradeRetry  = 45 * time.Minute
+	highlightFoundTTL      = 24 * time.Hour
+	highlightUpgradeWindow = 12 * time.Hour
+	highlightStopAfter     = 48 * time.Hour
+)
+
 type ESPNStore struct {
 	client         *http.Client
 	mu             sync.RWMutex
@@ -551,6 +567,7 @@ type ESPNStore struct {
 	upcomingCache  gameCache
 	schedulesCache scheduleCache
 	standingsCache standingsCache
+	leagueCache    leagueStandingsCache
 	resultsCache   resultsCache
 	aiRecapCache   map[string]aiGameRecap
 	highlights     map[string]highlightsCacheEntry
@@ -988,13 +1005,59 @@ func (s *ESPNStore) GetStandings() []models.StandingsRow {
 	wg.Wait()
 
 	sort.Slice(rows, func(i, j int) bool {
-		return string(rows[i].Team.Sport) < string(rows[j].Team.Sport)
+		return sportOrder(rows[i].Team.Sport) < sportOrder(rows[j].Team.Sport)
 	})
 
 	s.mu.Lock()
 	s.standingsCache = standingsCache{rows: rows, expiresAt: time.Now().Add(1 * time.Hour)}
 	s.mu.Unlock()
 	return rows
+}
+
+func (s *ESPNStore) GetLeagueStandings() []models.LeagueStandings {
+	s.mu.RLock()
+	if time.Now().Before(s.leagueCache.expiresAt) {
+		leagues := s.leagueCache.leagues
+		s.mu.RUnlock()
+		return leagues
+	}
+	s.mu.RUnlock()
+
+	var mu sync.Mutex
+	leagues := make([]models.LeagueStandings, 0, len(sportConfigs))
+	var wg sync.WaitGroup
+
+	for _, cfg := range sportConfigs {
+		cfg := cfg
+		if !isInSeason(cfg.Sport) {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var resp espnStandingsResp
+			if err := s.fetchJSON(cfg.StandingsURL, &resp); err != nil {
+				return
+			}
+			league := leagueStandingsFromResponse(cfg, resp)
+			if len(league.Views) == 0 {
+				return
+			}
+			mu.Lock()
+			leagues = append(leagues, league)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	sort.Slice(leagues, func(i, j int) bool {
+		return sportOrder(leagues[i].Sport) < sportOrder(leagues[j].Sport)
+	})
+
+	s.mu.Lock()
+	s.leagueCache = leagueStandingsCache{leagues: leagues, expiresAt: time.Now().Add(1 * time.Hour)}
+	s.mu.Unlock()
+	return leagues
 }
 
 func (s *ESPNStore) withSoccerHomeAwaySplits(row models.StandingsRow, cfg sportCfg, teamID string) models.StandingsRow {
@@ -1088,35 +1151,426 @@ func flattenStandingsEntries(resp espnStandingsResp) []espnStandingsEntry {
 	return entries
 }
 
+func leagueStandingsFromResponse(cfg sportCfg, resp espnStandingsResp) models.LeagueStandings {
+	allEntries := uniqueStandingsEntries(flattenStandingsEntries(resp))
+	allRows := standingsRowsFromEntries(allEntries, cfg.Sport, standingsSortOverall)
+	if len(allEntries) == 0 || len(allRows) == 0 {
+		return models.LeagueStandings{}
+	}
+
+	phillyPath := phillyStandingsGroupPath(resp.Children, cfg.PhillyTeamIDs)
+	views := make([]models.StandingsView, 0, 3)
+	addView := func(key, scope, label string, entries []espnStandingsEntry) {
+		rows := standingsRowsFromEntries(uniqueStandingsEntries(entries), cfg.Sport, standingsSortGroup)
+		appendStandingsView(&views, key, scope, label, rows)
+	}
+
+	if division := phillyDivisionStandings(cfg.Sport, allEntries); len(division.entries) > 0 {
+		rows := standingsRowsFromEntries(division.entries, cfg.Sport, standingsSortOverall)
+		appendStandingsView(&views, "division", "Division", division.label, rows)
+	}
+	if len(phillyPath) > 0 {
+		deepest := phillyPath[len(phillyPath)-1]
+		deepestKey, deepestScope := standingsScopeForGroup(deepest.Name, len(phillyPath) > 1)
+		addView(deepestKey, deepestScope, deepest.Name, collectStandingsGroupEntries(deepest))
+	}
+	if len(phillyPath) > 1 {
+		parent := phillyPath[0]
+		addView("conference", standingsScopeLabel(parent.Name, "Conference"), parent.Name, collectStandingsGroupEntries(parent))
+	}
+	appendStandingsView(&views, "overall", "Overall", string(cfg.Sport), allRows)
+
+	return models.LeagueStandings{
+		Sport: cfg.Sport,
+		Views: views,
+	}
+}
+
+func appendStandingsView(views *[]models.StandingsView, key, scope, label string, rows []models.StandingsRow) {
+	if len(rows) == 0 || standingsViewExists(*views, key, label, rows) {
+		return
+	}
+	*views = append(*views, models.StandingsView{
+		Key:   standingsViewKey(key, label),
+		Label: label,
+		Scope: scope,
+		Rows:  rows,
+	})
+}
+
+type divisionStandingsEntries struct {
+	label   string
+	entries []espnStandingsEntry
+}
+
+func phillyDivisionStandings(sport models.Sport, entries []espnStandingsEntry) divisionStandingsEntries {
+	label, teamIDs := phillyDivisionTeamIDs(sport)
+	if label == "" || len(teamIDs) == 0 {
+		return divisionStandingsEntries{}
+	}
+	keep := map[string]bool{}
+	for _, id := range teamIDs {
+		keep[id] = true
+	}
+	out := make([]espnStandingsEntry, 0, len(teamIDs))
+	for _, entry := range entries {
+		if keep[entry.Team.ID] {
+			out = append(out, entry)
+		}
+	}
+	return divisionStandingsEntries{label: label, entries: out}
+}
+
+func phillyDivisionTeamIDs(sport models.Sport) (string, []string) {
+	switch sport {
+	case models.NFL:
+		return "NFC East", []string{"6", "19", "21", "28"}
+	case models.MLB:
+		return "NL East", []string{"15", "20", "21", "22", "28"}
+	case models.NBA:
+		return "Atlantic", []string{"2", "17", "18", "20", "28"}
+	case models.NHL:
+		return "Metropolitan", []string{"7", "11", "12", "13", "15", "16", "23", "29"}
+	default:
+		return "", nil
+	}
+}
+
+func standingsViewKey(scope, label string) string {
+	parts := []string{scope}
+	for _, part := range strings.FieldsFunc(strings.ToLower(label), func(r rune) bool {
+		return r < 'a' || r > 'z'
+	}) {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "-")
+}
+
+func phillyStandingsGroupPath(groups []espnStandingsGroup, phillyTeamIDs []string) []espnStandingsGroup {
+	for _, group := range groups {
+		if !standingsEntriesContainTeam(collectStandingsGroupEntries(group), phillyTeamIDs) {
+			continue
+		}
+		childPath := phillyStandingsGroupPath(group.Children, phillyTeamIDs)
+		return append([]espnStandingsGroup{group}, childPath...)
+	}
+	return nil
+}
+
+func collectStandingsGroupEntries(group espnStandingsGroup) []espnStandingsEntry {
+	entries := append([]espnStandingsEntry(nil), group.Standings.Entries...)
+	for _, child := range group.Children {
+		entries = append(entries, collectStandingsGroupEntries(child)...)
+	}
+	return entries
+}
+
+func standingsEntriesContainTeam(entries []espnStandingsEntry, teamIDs []string) bool {
+	for _, entry := range entries {
+		for _, teamID := range teamIDs {
+			if entry.Team.ID == teamID {
+				return true
+			}
+		}
+		if isPhillyESPN(entry.Team) {
+			return true
+		}
+	}
+	return false
+}
+
+type standingsSortMode int
+
+const (
+	standingsSortGroup standingsSortMode = iota
+	standingsSortOverall
+)
+
+func standingsRowsFromEntries(entries []espnStandingsEntry, sport models.Sport, mode standingsSortMode) []models.StandingsRow {
+	entries = append([]espnStandingsEntry(nil), entries...)
+	sort.SliceStable(entries, func(i, j int) bool {
+		if mode == standingsSortOverall {
+			return standingsEntryOverallLess(entries[i], entries[j], sport)
+		}
+		return standingsEntryRankLess(entries[i], entries[j])
+	})
+
+	rows := make([]models.StandingsRow, 0, len(entries))
+	for _, entry := range entries {
+		rows = append(rows, standingsEntryToRow(entry, sport))
+	}
+	if mode == standingsSortOverall {
+		for i := range rows {
+			rows[i].Rank = strconv.Itoa(i + 1)
+		}
+	}
+	return rows
+}
+
+func standingsEntryRankLess(a, b espnStandingsEntry) bool {
+	av, aok := standingsRank(a)
+	bv, bok := standingsRank(b)
+	if aok && bok && av != bv {
+		return av < bv
+	}
+	return false
+}
+
+func standingsRank(entry espnStandingsEntry) (float64, bool) {
+	return standingsStat(entry, "playoffSeed", "rank", "seed", "position")
+}
+
+func standingsEntryOverallLess(a, b espnStandingsEntry, sport models.Sport) bool {
+	if sport == models.NHL || sport == models.MLS {
+		if av, bv := standingsValue(a, "points"), standingsValue(b, "points"); av != bv {
+			return av > bv
+		}
+	}
+	if av, bv := standingsWinPercent(a), standingsWinPercent(b); av != bv {
+		return av > bv
+	}
+	if av, bv := standingsValue(a, "wins"), standingsValue(b, "wins"); av != bv {
+		return av > bv
+	}
+	if av, bv := standingsValue(a, "losses"), standingsValue(b, "losses"); av != bv {
+		return av < bv
+	}
+	if av, bv := standingsValue(a, "ties", "draws"), standingsValue(b, "ties", "draws"); av != bv {
+		return av > bv
+	}
+	if av, bv := standingsValue(a, "pointDifferential", "differential", "pointsDifferential", "goalDifferential"), standingsValue(b, "pointDifferential", "differential", "pointsDifferential", "goalDifferential"); av != bv {
+		return av > bv
+	}
+	return strings.Compare(standingsTeamSortName(a.Team), standingsTeamSortName(b.Team)) < 0
+}
+
+func standingsWinPercent(entry espnStandingsEntry) float64 {
+	if value, ok := standingsStat(entry, "winPercent", "winningPercentage", "pct"); ok {
+		return value
+	}
+	wins := standingsValue(entry, "wins")
+	losses := standingsValue(entry, "losses")
+	ties := standingsValue(entry, "ties", "draws")
+	total := wins + losses + ties
+	if total == 0 {
+		return 0
+	}
+	return (wins + ties*0.5) / total
+}
+
+func standingsValue(entry espnStandingsEntry, names ...string) float64 {
+	value, _ := standingsStat(entry, names...)
+	return value
+}
+
+func standingsStat(entry espnStandingsEntry, names ...string) (float64, bool) {
+	for _, name := range names {
+		for _, stat := range entry.Stats {
+			if strings.EqualFold(stat.Name, name) ||
+				strings.EqualFold(stat.Abbreviation, name) ||
+				strings.EqualFold(stat.DisplayName, name) ||
+				strings.EqualFold(stat.ShortName, name) {
+				return stat.Value, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func standingsTeamSortName(team espnTeam) string {
+	return strings.TrimSpace(team.Location + " " + firstNonEmpty(team.Name, team.Nickname, team.DisplayName))
+}
+
+func uniqueStandingsEntries(entries []espnStandingsEntry) []espnStandingsEntry {
+	seen := map[string]bool{}
+	out := make([]espnStandingsEntry, 0, len(entries))
+	for _, entry := range entries {
+		key := entry.Team.ID
+		if key == "" {
+			key = strings.ToLower(strings.TrimSpace(entry.Team.Location + ":" + entry.Team.Name + ":" + entry.Team.Nickname))
+		}
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, entry)
+	}
+	return out
+}
+
+func standingsScopeForGroup(name string, hasParent bool) (key, scope string) {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "conference"):
+		return "conference", standingsScopeLabel(name, "Conference")
+	case strings.Contains(lower, "league"):
+		return "league", standingsScopeLabel(name, "League")
+	case hasParent:
+		return "division", standingsScopeLabel(name, "Division")
+	default:
+		return "division", standingsScopeLabel(name, "Division")
+	}
+}
+
+func standingsScopeLabel(name, fallback string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "conference"):
+		return "Conference"
+	case strings.Contains(lower, "division"):
+		return "Division"
+	case strings.Contains(lower, "league"):
+		return "League"
+	default:
+		return fallback
+	}
+}
+
+func standingsViewExists(views []models.StandingsView, key, label string, rows []models.StandingsRow) bool {
+	for _, view := range views {
+		if view.Key == key || strings.EqualFold(view.Label, label) || sameStandingsRows(view.Rows, rows) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameStandingsRows(a, b []models.StandingsRow) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !sameStandingsTeam(a[i].Team, b[i].Team) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStandingsTeam(a, b models.Team) bool {
+	if a.ID != "" && b.ID != "" {
+		return strings.EqualFold(a.ID, b.ID)
+	}
+	return strings.EqualFold(a.City, b.City) && strings.EqualFold(a.Name, b.Name)
+}
+
+func recordPartsOrStats(recordStat func(...string) (string, bool), intStat func(...string) int, recordNames, winNames, lossNames, thirdNames []string) (int, int, int) {
+	if record, ok := recordStat(recordNames...); ok {
+		return parseRecordParts(record)
+	}
+	return intStat(winNames...), intStat(lossNames...), intStat(thirdNames...)
+}
+
+func isRecordDisplayValue(value string) bool {
+	if value == "" || !strings.Contains(value, "-") {
+		return false
+	}
+	_, _, _, ok := parseRecordPartsOK(value)
+	return ok
+}
+
+func parseRecordParts(record string) (int, int, int) {
+	first, second, third, _ := parseRecordPartsOK(record)
+	return first, second, third
+}
+
+func parseRecordPartsOK(record string) (int, int, int, bool) {
+	parts := strings.Split(strings.TrimSpace(record), "-")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, 0, 0, false
+	}
+	values := [3]int{}
+	for i, part := range parts {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		values[i] = value
+	}
+	return values[0], values[1], values[2], true
+}
+
+func sportOrder(sport models.Sport) int {
+	switch sport {
+	case models.NFL:
+		return 0
+	case models.NHL:
+		return 1
+	case models.MLB:
+		return 2
+	case models.NBA:
+		return 3
+	case models.MLS:
+		return 4
+	default:
+		return 99
+	}
+}
+
 func standingsEntryToRow(entry espnStandingsEntry, sport models.Sport) models.StandingsRow {
 	sm := make(map[string]espnStat, len(entry.Stats))
 	for _, s := range entry.Stats {
 		sm[s.Name] = s
+		sm[strings.ToLower(s.Name)] = s
+		sm[strings.ToLower(s.Abbreviation)] = s
+		sm[strings.ToLower(s.DisplayName)] = s
+		sm[strings.ToLower(s.ShortName)] = s
 	}
 
 	intStat := func(names ...string) int {
 		for _, n := range names {
-			if s, ok := sm[n]; ok {
+			if s, ok := sm[strings.ToLower(n)]; ok {
 				return int(s.Value)
 			}
 		}
 		return 0
 	}
+	recordStat := func(names ...string) (string, bool) {
+		for _, n := range names {
+			if s, ok := sm[strings.ToLower(n)]; ok {
+				value := strings.TrimSpace(s.DisplayValue)
+				if isRecordDisplayValue(value) {
+					return value, true
+				}
+			}
+		}
+		return "", false
+	}
+	displayStat := func(names ...string) string {
+		for _, n := range names {
+			if s, ok := sm[strings.ToLower(n)]; ok {
+				value := strings.TrimSpace(s.DisplayValue)
+				if value != "" && value != "-" {
+					return value
+				}
+				if s.Value > 0 {
+					return strconv.Itoa(int(s.Value))
+				}
+			}
+		}
+		return ""
+	}
 
 	w := intStat("wins")
 	l := intStat("losses")
 	t := intStat("ties", "draws")
-	hw := intStat("homeWins", "homeWin")
-	hl := intStat("homeLosses", "homeLoss")
-	ht := intStat("homeTies", "homeDraws")
-	rw := intStat("roadWins", "awayWins", "roadWin")
-	rl := intStat("roadLosses", "awayLosses", "roadLoss")
-	rt := intStat("roadTies", "awayTies", "roadDraws", "awayDraws")
+	hw, hl, ht := recordPartsOrStats(recordStat, intStat, []string{"home", "homeRecord"}, []string{"homeWins", "homeWin"}, []string{"homeLosses", "homeLoss"}, []string{"homeTies", "homeDraws"})
+	rw, rl, rt := recordPartsOrStats(recordStat, intStat, []string{"road", "away", "roadRecord", "awayRecord"}, []string{"roadWins", "awayWins", "roadWin"}, []string{"roadLosses", "awayLosses", "roadLoss"}, []string{"roadTies", "awayTies", "roadDraws", "awayDraws"})
 
 	// NHL OT losses
 	otl := intStat("otLosses", "overtimeLosses")
-	hotl := intStat("homeOtLosses", "homeOTLoss")
-	rotl := intStat("roadOtLosses", "roadOTLoss")
+	hotl := intStat("homeOtLosses", "homeOTLoss", "homeOvertimeLosses")
+	rotl := intStat("roadOtLosses", "roadOTLoss", "roadOvertimeLosses", "awayOtLosses", "awayOvertimeLosses")
+	if sport == models.NHL {
+		if homeRecord, ok := recordStat("home", "homeRecord"); ok {
+			hw, hl, hotl = parseRecordParts(homeRecord)
+		}
+		if awayRecord, ok := recordStat("road", "away", "roadRecord", "awayRecord"); ok {
+			rw, rl, rotl = parseRecordParts(awayRecord)
+		}
+	}
 
 	var record, homeStr, awayStr string
 	if sport == models.NHL {
@@ -1138,6 +1592,7 @@ func standingsEntryToRow(entry espnStandingsEntry, sport models.Sport) models.St
 		Record:   record,
 		Home:     homeStr,
 		Away:     awayStr,
+		Rank:     displayStat("playoffSeed", "rank", "seed", "position"),
 		HomeDiff: hw - hl,
 		AwayDiff: rw - rl,
 	}
@@ -1314,7 +1769,11 @@ func (s *ESPNStore) attachHighlights(cfg sportCfg, g models.Game, result models.
 	}
 
 	highlights := s.fetchGameHighlights(cfg, g)
-	entry = newHighlightsCacheEntry(highlights, g.StartTime, now)
+	if len(highlights) == 0 && ok && len(entry.Highlights) > 0 {
+		entry = refreshedHighlightsCacheEntry(entry, g.StartTime, now)
+	} else {
+		entry = newHighlightsCacheEntry(highlights, g.StartTime, now)
+	}
 
 	s.mu.Lock()
 	s.highlights[result.GameID] = entry
@@ -1334,15 +1793,15 @@ func newHighlightsCacheEntry(highlights []models.VideoHighlight, gameDate, now t
 		return highlightsCacheEntry{
 			Highlights:  highlights,
 			CachedAt:    now,
-			NextFetchAt: now.Add(24 * time.Hour),
-			StopAfter:   gameDate.Add(48 * time.Hour),
+			NextFetchAt: nextFoundHighlightsFetch(gameDate, now),
+			StopAfter:   highlightStopAfterTime(gameDate),
 		}
 	}
-	stopAfter := gameDate.Add(48 * time.Hour)
+	stopAfter := highlightStopAfterTime(gameDate)
 	pending := gameDate.IsZero() || now.Before(stopAfter)
-	next := now.Add(15 * time.Minute)
+	next := now.Add(highlightPendingRetry)
 	if !pending {
-		next = now.Add(24 * time.Hour)
+		next = now.Add(highlightFoundTTL)
 	}
 	return highlightsCacheEntry{
 		Pending:     pending,
@@ -1350,6 +1809,30 @@ func newHighlightsCacheEntry(highlights []models.VideoHighlight, gameDate, now t
 		NextFetchAt: next,
 		StopAfter:   stopAfter,
 	}
+}
+
+func refreshedHighlightsCacheEntry(entry highlightsCacheEntry, gameDate, now time.Time) highlightsCacheEntry {
+	entry.Pending = false
+	entry.CachedAt = now
+	entry.NextFetchAt = nextFoundHighlightsFetch(gameDate, now)
+	if entry.StopAfter.IsZero() {
+		entry.StopAfter = highlightStopAfterTime(gameDate)
+	}
+	return entry
+}
+
+func nextFoundHighlightsFetch(gameDate, now time.Time) time.Time {
+	if gameDate.IsZero() || now.Before(gameDate.Add(highlightUpgradeWindow)) {
+		return now.Add(highlightUpgradeRetry)
+	}
+	return now.Add(highlightFoundTTL)
+}
+
+func highlightStopAfterTime(gameDate time.Time) time.Time {
+	if gameDate.IsZero() {
+		return time.Time{}
+	}
+	return gameDate.Add(highlightStopAfter)
 }
 
 func (s *ESPNStore) fetchGameHighlights(cfg sportCfg, g models.Game) []models.VideoHighlight {
@@ -1611,6 +2094,7 @@ func dedupeHighlights(highlights []models.VideoHighlight) []models.VideoHighligh
 func (s *ESPNStore) InvalidateStandings() {
 	s.mu.Lock()
 	s.standingsCache = standingsCache{}
+	s.leagueCache = leagueStandingsCache{}
 	s.mu.Unlock()
 }
 
@@ -2271,7 +2755,7 @@ Provider description: %s
 }
 
 func (s *ESPNStore) GetTeams() []models.Team {
-	return []models.Team{Eagles, Phillies, Sixers, Flyers, Union}
+	return []models.Team{Eagles, Flyers, Phillies, Sixers, Union}
 }
 
 func (s *ESPNStore) GetGameByID(id string) (*models.Game, bool) {
@@ -2741,7 +3225,7 @@ func canonicalPhillyTeam(team models.Team) models.Team {
 		models.NFL: {"21": Eagles},
 		models.MLB: {"22": Phillies},
 		models.NBA: {"20": Sixers},
-		models.NHL: {"4": Flyers, "15": Flyers},
+		models.NHL: {"15": Flyers},
 		models.MLS: {"10739": Union},
 	}
 	if byID, ok := teams[team.Sport]; ok {
