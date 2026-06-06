@@ -334,13 +334,7 @@ func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
 			},
 		},
 	}
-	filtered := make([]models.LeagueStandings, 0, len(leagues))
-	for _, league := range leagues {
-		if isInSeason(league.Sport) {
-			filtered = append(filtered, league)
-		}
-	}
-	return filtered
+	return leagues
 }
 
 func (s *MockStore) GetGameByID(id string) (*models.Game, bool) {

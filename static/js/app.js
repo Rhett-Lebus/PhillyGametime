@@ -180,8 +180,70 @@
     const select = document.getElementById('league-sport-select');
     const sections = Array.from(document.querySelectorAll('[data-league-sport]'));
     if (!select || sections.length === 0) return;
+    const standingsPanel = select.closest('.league-standings-panel');
+    let jumpToken = 0;
+    let jumping = false;
 
-    const showScope = (section, scope) => {
+    const setFloatingControls = (stuck) => {
+      if (!standingsPanel || jumping) return;
+      standingsPanel.classList.toggle('controls-stuck', stuck);
+      if (!stuck) return;
+
+      const rect = standingsPanel.getBoundingClientRect();
+      standingsPanel.style.setProperty('--league-controls-left', `${Math.max(rect.left, 10)}px`);
+      standingsPanel.style.setProperty('--league-controls-width', `${Math.min(rect.width, window.innerWidth - 20)}px`);
+    };
+
+    const updateFloatingControls = () => {
+      if (!standingsPanel || jumping) return;
+      const header = document.querySelector('.site-header');
+      const headerHeight = header ? header.offsetHeight : 80;
+      const rect = standingsPanel.getBoundingClientRect();
+      const stuck = rect.top <= headerHeight + 8 && rect.bottom > headerHeight + 180;
+
+      setFloatingControls(stuck);
+    };
+
+    const activeScopePanel = () => {
+      const section = sections.find((item) => !item.hidden);
+      return section ? section.querySelector('[data-league-scope-panel]:not([hidden])') : null;
+    };
+
+    const jumpToPhillyRow = (scopePanel = activeScopePanel()) => {
+      const token = ++jumpToken;
+      jumping = true;
+      if (standingsPanel) {
+        jumping = false;
+        setFloatingControls(true);
+        jumping = true;
+      }
+
+      const scroll = () => {
+        const targetScopePanel = scopePanel && !scopePanel.hidden ? scopePanel : activeScopePanel();
+        if (token !== jumpToken || !targetScopePanel) return;
+        const row = targetScopePanel.querySelector('.standings-row--philly');
+        if (!row) return;
+
+        const header = document.querySelector('.site-header');
+        const headerHeight = header ? header.offsetHeight : 80;
+        const controls = standingsPanel ? standingsPanel.querySelector('.league-controls') : null;
+        const scopeControl = standingsPanel ? standingsPanel.querySelector('.league-standings:not([hidden]) .league-scope-control') : null;
+        const controlsHeight = (controls ? controls.offsetHeight : 0) + (scopeControl ? scopeControl.offsetHeight : 0);
+        const rect = row.getBoundingClientRect();
+        const top = Math.max(0, window.scrollY + rect.top - headerHeight - controlsHeight - 75);
+
+        window.scrollTo({ top, behavior: 'smooth' });
+        setTimeout(() => {
+          if (token !== jumpToken) return;
+          jumping = false;
+          updateFloatingControls();
+        }, 560);
+      };
+      requestAnimationFrame(scroll);
+      setTimeout(scroll, 220);
+    };
+
+    const showScope = (section, scope, jump = true) => {
       const panels = Array.from(section.querySelectorAll('[data-league-scope-panel]'));
       const scopeSelect = section.querySelector('[data-league-scope-select]');
       const selected = panels.some((panel) => panel.dataset.leagueScopePanel === scope)
@@ -189,29 +251,45 @@
         : (panels[0] ? panels[0].dataset.leagueScopePanel : '');
 
       if (scopeSelect && selected) scopeSelect.value = selected;
+      let activePanel = null;
       panels.forEach((panel) => {
-        panel.hidden = panel.dataset.leagueScopePanel !== selected;
+        const active = panel.dataset.leagueScopePanel === selected;
+        panel.hidden = !active;
+        if (active) activePanel = panel;
       });
+      if (jump) jumpToPhillyRow(activePanel);
+      return activePanel;
     };
 
-    const showSport = (sport) => {
+    const showSport = (sport, jump = true) => {
+      let activePanel = null;
       sections.forEach((section) => {
         const active = section.dataset.leagueSport === sport;
         section.hidden = !active;
         if (active) {
           const scopeSelect = section.querySelector('[data-league-scope-select]');
           const firstPanel = section.querySelector('[data-league-scope-panel]');
-          showScope(section, scopeSelect ? scopeSelect.value : (firstPanel ? firstPanel.dataset.leagueScopePanel : ''));
+          activePanel = showScope(section, scopeSelect ? scopeSelect.value : (firstPanel ? firstPanel.dataset.leagueScopePanel : ''), false);
         }
       });
+      if (jump) jumpToPhillyRow(activePanel);
     };
 
     sections.forEach((section) => {
       const scopeSelect = section.querySelector('[data-league-scope-select]');
-      if (scopeSelect) scopeSelect.addEventListener('change', () => showScope(section, scopeSelect.value));
+      if (scopeSelect) scopeSelect.addEventListener('change', () => {
+        showScope(section, scopeSelect.value);
+        updateFloatingControls();
+      });
     });
-    select.addEventListener('change', () => showSport(select.value));
-    showSport(select.value);
+    select.addEventListener('change', () => {
+      showSport(select.value);
+      updateFloatingControls();
+    });
+    window.addEventListener('scroll', updateFloatingControls, { passive: true });
+    window.addEventListener('resize', updateFloatingControls);
+    showSport(select.value, false);
+    updateFloatingControls();
   }
 
   function ensureBaseballCurrentPlay(baseball) {

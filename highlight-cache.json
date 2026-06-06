@@ -61,8 +61,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3973851-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3973851-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2622025-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2622025-04:00",
       "StopAfter": "2026-05-25T20:05:00Z"
     },
     "401815471": {
@@ -77,8 +77,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.7480494-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.7480494-04:00",
+      "CachedAt": "2026-06-06T07:49:15.307255-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.307255-04:00",
       "StopAfter": "2026-05-26T17:35:00Z"
     },
     "401815497": {
@@ -93,8 +93,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3963503-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3963503-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2591169-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2591169-04:00",
       "StopAfter": "2026-05-27T22:40:00Z"
     },
     "401815512": {
@@ -109,8 +109,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3288434-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3288434-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2591169-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2591169-04:00",
       "StopAfter": "2026-05-29T01:40:00Z"
     },
     "401815527": {
@@ -125,8 +125,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3963503-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3963503-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2534551-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2534551-04:00",
       "StopAfter": "2026-05-29T20:10:00Z"
     },
     "401815549": {
@@ -141,8 +141,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3277464-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3277464-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2591169-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2591169-04:00",
       "StopAfter": "2026-06-01T02:15:00Z"
     },
     "401815564": {
@@ -157,8 +157,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.4286086-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.4286086-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2596338-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2596338-04:00",
       "StopAfter": "2026-06-02T02:10:00Z"
     },
     "401815579": {
@@ -173,25 +173,73 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.3100736-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.3100736-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2648734-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2648734-04:00",
       "StopAfter": "2026-06-02T20:10:00Z"
     },
     "401815594": {
       "Highlights": [
         {
-          "Title": "Bryce Harper's two-run home run (14)",
-          "Description": "Bryce Harper smashes a two-run home run to left-center field, tying the game at 2-2 in the 4th inning",
-          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/yw2ezqtgbhuhfqzd425d.jpg",
-          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/02/c93b9853-14d601f5-104363b4-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Title": "Condensed Game: SD@PHI - 6/2/26",
+          "Description": "Condensed Game: Fernando Tatis Jr. and the Padres take on Bryce Harper and the Phillies on June 2, 2026",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/rwoaxbka5stekblisiif.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/02/f53248c4-be481eea-f0c49b81-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
           "Provider": "MLB",
-          "PublishedAt": "2026-06-02T23:51:03.071Z"
+          "PublishedAt": "2026-06-03T02:37:04.703Z"
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T21:22:05.396171-04:00",
-      "NextFetchAt": "2026-06-03T21:22:05.396171-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2560366-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2560366-04:00",
       "StopAfter": "2026-06-04T22:40:00Z"
+    },
+    "401815609": {
+      "Highlights": [
+        {
+          "Title": "Condensed Game: SD@PHI - 6/3/26",
+          "Description": "Condensed Game: Walker Buehler and the Padres take on Cristopher Sánchez and the Phillies on June 3, 2026",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/yu6twnzedhfodmpkx4vc.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/03/33d20d26-e250538c-265dc211-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Provider": "MLB",
+          "PublishedAt": "2026-06-04T02:04:16.461Z"
+        }
+      ],
+      "Pending": false,
+      "CachedAt": "2026-06-06T07:49:15.2851005-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2851005-04:00",
+      "StopAfter": "2026-06-05T22:40:00Z"
+    },
+    "401815621": {
+      "Highlights": [
+        {
+          "Title": "Zack Wheeler strikes out eight for win vs. Padres",
+          "Description": "Zack Wheeler strikes out eight Padres over seven innings and only allows two hit to earn the win",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/v1780614752/mlb/a7tzdpwguylmcv7dhnhq.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/04/4c065c20-23d9e74c-77643ada-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Provider": "MLB",
+          "PublishedAt": "2026-06-04T19:34:15.213Z"
+        }
+      ],
+      "Pending": false,
+      "CachedAt": "2026-06-06T07:49:15.2513727-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2513727-04:00",
+      "StopAfter": "2026-06-06T17:05:00Z"
+    },
+    "401815630": {
+      "Highlights": [
+        {
+          "Title": "Condensed Game: CWS@PHI - 6/5/26",
+          "Description": "Condensed Game: Randal Grichuk and the White Sox take on Brandon Marsh and the Phillies on June 5, 2026",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/ip8guriudqzjv2sd22hm.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/05/245d47b3-8f519f6f-f9957071-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Provider": "MLB",
+          "PublishedAt": "2026-06-06T02:54:48.192Z"
+        }
+      ],
+      "Pending": false,
+      "CachedAt": "2026-06-06T07:49:15.2544916-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2544916-04:00",
+      "StopAfter": "2026-06-07T22:40:00Z"
     },
     "761657": {
       "Highlights": [
@@ -205,8 +253,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-02T16:55:02.4704135-04:00",
-      "NextFetchAt": "2026-06-03T16:55:02.4704135-04:00",
+      "CachedAt": "2026-06-06T07:49:15.2667619-04:00",
+      "NextFetchAt": "2026-06-07T07:49:15.2667619-04:00",
       "StopAfter": "2026-05-26T23:00:00Z"
     }
   }

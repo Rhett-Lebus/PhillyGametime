@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"os"
+	"sort"
 	"testing"
 	"time"
 
 	"gametime/data"
 	"gametime/events"
+	"gametime/models"
 )
 
 func TestFormatDateTimeUsesPhiladelphiaTime(t *testing.T) {
@@ -63,5 +65,44 @@ func TestDayLabelUsesPhiladelphiaTime(t *testing.T) {
 
 	if got := dayLabel(tomorrow); got != "Tomorrow" {
 		t.Fatalf("dayLabel() = %q, want Tomorrow", got)
+	}
+}
+
+func TestStatsLeagueSportOrderPrefersInSeasonThenTeamOrder(t *testing.T) {
+	sports := []models.Sport{models.NFL, models.NHL, models.MLB, models.NBA, models.MLS}
+	activeSports := map[models.Sport]bool{
+		models.MLB: true,
+		models.MLS: true,
+	}
+
+	sort.SliceStable(sports, func(i, j int) bool {
+		return statsLeagueSportLess(sports[i], sports[j], activeSports)
+	})
+
+	want := []models.Sport{models.MLB, models.MLS, models.NFL, models.NHL, models.NBA}
+	for i := range want {
+		if sports[i] != want[i] {
+			t.Fatalf("active Phillies/Union stats order = %#v, want %#v", sports, want)
+		}
+	}
+}
+
+func TestStatsLeagueSportOrderPrioritizesEaglesWhenNFLInSeason(t *testing.T) {
+	sports := []models.Sport{models.MLB, models.MLS, models.NFL, models.NHL, models.NBA}
+	activeSports := map[models.Sport]bool{
+		models.NFL: true,
+		models.MLB: true,
+		models.MLS: true,
+	}
+
+	sort.SliceStable(sports, func(i, j int) bool {
+		return statsLeagueSportLess(sports[i], sports[j], activeSports)
+	})
+
+	want := []models.Sport{models.NFL, models.MLB, models.MLS, models.NHL, models.NBA}
+	for i := range want {
+		if sports[i] != want[i] {
+			t.Fatalf("active Eagles/Phillies/Union stats order = %#v, want %#v", sports, want)
+		}
 	}
 }

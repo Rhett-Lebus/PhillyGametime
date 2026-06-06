@@ -1029,9 +1029,6 @@ func (s *ESPNStore) GetLeagueStandings() []models.LeagueStandings {
 
 	for _, cfg := range sportConfigs {
 		cfg := cfg
-		if !isInSeason(cfg.Sport) {
-			continue
-		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -3270,11 +3267,11 @@ func isInSeason(sport models.Sport) bool {
 		// April – October (including playoffs)
 		return m >= time.April && m <= time.October
 	case models.NBA:
-		// October – June
-		return m >= time.October || m <= time.June
+		// October - May
+		return m >= time.October || m <= time.May
 	case models.NHL:
-		// October – June
-		return m >= time.October || m <= time.June
+		// October - May
+		return m >= time.October || m <= time.May
 	case models.MLS:
 		// March – November
 		return m >= time.March && m <= time.November

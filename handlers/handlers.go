@@ -606,16 +606,22 @@ func sameTeam(a, b models.Team) bool {
 }
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	standings := h.store.GetStandings()
 	h.render(w, "stats", StatsData{
 		NavActive:       "stats",
 		Title:           "Stats",
-		Standings:       h.store.GetStandings(),
-		LeagueStandings: buildLeagueStandingsViews(h.store.GetLeagueStandings()),
+		Standings:       standings,
+		LeagueStandings: buildLeagueStandingsViews(h.store.GetLeagueStandings(), activeStandingsSports(standings)),
 		Recent:          h.store.GetRecentResults(),
 	})
 }
 
-func buildLeagueStandingsViews(leagues []models.LeagueStandings) []LeagueStandingsView {
+func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports map[models.Sport]bool) []LeagueStandingsView {
+	leagues = append([]models.LeagueStandings(nil), leagues...)
+	sort.SliceStable(leagues, func(i, j int) bool {
+		return statsLeagueSportLess(leagues[i].Sport, leagues[j].Sport, activeSports)
+	})
+
 	views := make([]LeagueStandingsView, 0, len(leagues))
 	for _, league := range leagues {
 		if len(league.Views) == 0 {
@@ -646,6 +652,40 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings) []LeagueStandin
 		})
 	}
 	return views
+}
+
+func activeStandingsSports(rows []models.StandingsRow) map[models.Sport]bool {
+	active := make(map[models.Sport]bool, len(rows))
+	for _, row := range rows {
+		active[row.Team.Sport] = true
+	}
+	return active
+}
+
+func statsLeagueSportLess(a, b models.Sport, activeSports map[models.Sport]bool) bool {
+	aActive := activeSports[a]
+	bActive := activeSports[b]
+	if aActive != bActive {
+		return aActive
+	}
+	return statsSportOrder(a) < statsSportOrder(b)
+}
+
+func statsSportOrder(sport models.Sport) int {
+	switch sport {
+	case models.NFL:
+		return 0
+	case models.NHL:
+		return 1
+	case models.MLB:
+		return 2
+	case models.NBA:
+		return 3
+	case models.MLS:
+		return 4
+	default:
+		return 99
+	}
 }
 
 func preferredLeagueScope(views []models.StandingsView) string {
