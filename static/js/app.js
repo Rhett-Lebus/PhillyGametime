@@ -4,6 +4,7 @@
   const POLL_INTERVAL = 30000;
   const THEME_KEY = 'phillyGametimeTheme';
   const DEFAULT_THEME = 'neon';
+  const lineupCache = new Map();
 
   function getStoredTheme() {
     try {
@@ -319,6 +320,7 @@
   function updateCardDOM(game) {
     const card = document.querySelector(`[data-game-id="${game.ID}"]`);
     if (!card) return;
+    rememberGameLineup(game);
 
     const away = card.querySelector('.score-away');
     const home = card.querySelector('.score-home');
@@ -421,6 +423,7 @@
   }
 
   function updateScheduleDOM(game) {
+    rememberGameLineup(game);
     document.querySelectorAll(`.schedule-game[data-game-id="${game.ID}"]`).forEach((item) => {
       const phillyHome = item.dataset.phillyHome === 'true';
       const result = item.querySelector('.schedule-result');
@@ -451,6 +454,201 @@
       if (status) {
         status.textContent = isLive ? 'Live' : (isFinal ? 'Final' : (game.Status || 'Scheduled'));
       }
+    });
+  }
+
+  function rememberGameLineup(game) {
+    if (!game || !game.ID || !game.Lineup) return;
+    lineupCache.set(game.ID, { Available: true, Lineup: game.Lineup });
+    markLineupPosted(game.ID);
+  }
+
+  function markLineupPosted(gameID) {
+    document.querySelectorAll(`[data-lineup-game="${gameID}"]`).forEach((button) => {
+      button.classList.add('lineup-button--ready');
+      button.textContent = 'Lineup Posted';
+    });
+  }
+
+  function teamLabel(team) {
+    if (!team) return '';
+    return [team.City, team.Name].filter(Boolean).join(' ').trim() || team.Name || team.Abbr || '';
+  }
+
+  function lineupRows(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'lineup-empty';
+      empty.textContent = 'Not posted yet.';
+      return [empty];
+    }
+    const list = document.createElement('ol');
+    list.className = 'lineup-list';
+    entries.forEach((entry, index) => {
+      const item = document.createElement('li');
+      const order = document.createElement('span');
+      order.className = 'lineup-order';
+      order.textContent = entry.Order || index + 1;
+      const name = document.createElement('strong');
+      name.textContent = entry.Name || 'TBD';
+      const position = document.createElement('span');
+      position.className = 'lineup-position';
+      position.textContent = entry.Position || '';
+      item.append(order, name, position);
+      list.append(item);
+    });
+    return [list];
+  }
+
+  function pitcherLabel(pitcher) {
+    if (!pitcher || !pitcher.Name) return 'TBD';
+    const hand = pitcher.Handedness ? ` ${pitcher.Handedness}HP` : '';
+    return `${pitcher.Name}${hand}`;
+  }
+
+  function pitcherCard(team, pitcher, extraClass = '') {
+    const card = document.createElement('div');
+    card.className = `lineup-pitcher-card${extraClass ? ` ${extraClass}` : ''}`;
+    if (team && team.Primary) card.style.setProperty('--lineup-team-color', team.Primary);
+    if (team && team.Secondary) card.style.setProperty('--lineup-team-accent', team.Secondary);
+
+    const label = document.createElement('small');
+    label.textContent = 'Starting pitcher';
+    const name = document.createElement('strong');
+    name.textContent = pitcherLabel(pitcher);
+    card.append(label, name);
+    return card;
+  }
+
+  function pitcherHasName(pitcher) {
+    return Boolean(pitcher && pitcher.Name);
+  }
+
+  function renderPitchersDesktop(lineup) {
+    if (!lineup || (!pitcherHasName(lineup.AwayPitcher) && !pitcherHasName(lineup.HomePitcher))) return null;
+    const wrap = document.createElement('section');
+    wrap.className = 'lineup-pitchers lineup-pitchers--desktop';
+    wrap.append(
+      pitcherCard(lineup.AwayTeam, lineup.AwayPitcher),
+      pitcherCard(lineup.HomeTeam, lineup.HomePitcher),
+    );
+    return wrap;
+  }
+
+  function renderLineup(modal, payload) {
+    const body = modal.querySelector('.lineup-modal__body');
+    if (!body) return;
+    body.replaceChildren();
+
+    if (!payload || !payload.Available || !payload.Lineup) {
+      const message = document.createElement('p');
+      message.className = 'lineup-empty';
+      message.textContent = (payload && payload.Message) || 'Lineup has not been posted yet.';
+      body.append(message);
+      return;
+    }
+
+    const lineup = payload.Lineup;
+    if (lineup.AwayTeam && lineup.AwayTeam.Primary) modal.style.setProperty('--lineup-away-color', lineup.AwayTeam.Primary);
+    if (lineup.HomeTeam && lineup.HomeTeam.Primary) modal.style.setProperty('--lineup-home-color', lineup.HomeTeam.Primary);
+    const pitchers = renderPitchersDesktop(lineup);
+    if (pitchers) body.append(pitchers);
+    [
+      { team: lineup.AwayTeam, pitcher: lineup.AwayPitcher, entries: lineup.Away },
+      { team: lineup.HomeTeam, pitcher: lineup.HomePitcher, entries: lineup.Home },
+    ].forEach(({ team, pitcher, entries }) => {
+      const section = document.createElement('section');
+      section.className = 'lineup-team';
+      if (team && team.Primary) section.style.setProperty('--lineup-team-color', team.Primary);
+      if (team && team.Secondary) section.style.setProperty('--lineup-team-accent', team.Secondary);
+      const heading = document.createElement('h3');
+      if (team && team.LogoURL) {
+        const logo = document.createElement('img');
+        logo.src = team.LogoURL;
+        logo.alt = `${teamLabel(team)} logo`;
+        heading.append(logo);
+      }
+      const name = document.createElement('span');
+      name.textContent = teamLabel(team);
+      heading.append(name);
+      section.append(heading);
+      if (pitcherHasName(pitcher)) section.append(pitcherCard(team, pitcher, 'lineup-pitcher-card--mobile'));
+      section.append(...lineupRows(entries));
+      body.append(section);
+    });
+  }
+
+  function createLineupModal() {
+    const modal = document.createElement('div');
+    modal.className = 'lineup-modal';
+    modal.hidden = true;
+    modal.innerHTML = `
+      <div class="lineup-modal__backdrop" data-lineup-close></div>
+      <section class="lineup-modal__panel" role="dialog" aria-modal="true" aria-labelledby="lineup-modal-title">
+        <header class="lineup-modal__header">
+          <h2 id="lineup-modal-title">Lineup</h2>
+          <button type="button" class="lineup-modal__close" data-lineup-close aria-label="Close lineup">&times;</button>
+        </header>
+        <div class="lineup-modal__body"></div>
+      </section>
+    `;
+    modal.addEventListener('click', (event) => {
+      if (event.target.closest('[data-lineup-close]')) closeLineupModal(modal);
+    });
+    document.body.append(modal);
+    return modal;
+  }
+
+  function closeLineupModal(modal = document.querySelector('.lineup-modal')) {
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.classList.remove('lineup-modal-open');
+  }
+
+  function showLineupLoading(modal, title) {
+    const heading = modal.querySelector('#lineup-modal-title');
+    const body = modal.querySelector('.lineup-modal__body');
+    modal.style.removeProperty('--lineup-away-color');
+    modal.style.removeProperty('--lineup-home-color');
+    if (heading) heading.textContent = title || 'Lineup';
+    if (body) {
+      const loading = document.createElement('p');
+      loading.className = 'lineup-empty';
+      loading.textContent = 'Checking lineup...';
+      body.replaceChildren(loading);
+    }
+    modal.hidden = false;
+    document.body.classList.add('lineup-modal-open');
+  }
+
+  function initLineupButtons() {
+    if (!document.querySelector('[data-lineup-game]')) return;
+    const modal = createLineupModal();
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-lineup-game]');
+      if (!button) return;
+      const gameID = button.dataset.lineupGame;
+      if (!gameID) return;
+
+      showLineupLoading(modal, button.dataset.lineupTitle || 'Lineup');
+      if (lineupCache.has(gameID)) {
+        renderLineup(modal, lineupCache.get(gameID));
+        return;
+      }
+
+      fetch(`/api/games/${encodeURIComponent(gameID)}/lineup`)
+        .then((response) => response.ok ? response.json() : Promise.reject(response))
+        .then((payload) => {
+          lineupCache.set(gameID, payload);
+          if (payload && payload.Available) markLineupPosted(gameID);
+          renderLineup(modal, payload);
+        })
+        .catch(() => {
+          renderLineup(modal, { Available: false, Message: 'Lineup is unavailable right now.' });
+        });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeLineupModal(modal);
     });
   }
 
@@ -512,6 +710,7 @@
   });
   initSchedulePicker();
   initLeagueStandingsPicker();
+  initLineupButtons();
   pollScores();
   setInterval(pollScores, POLL_INTERVAL);
 

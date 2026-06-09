@@ -85,6 +85,7 @@
               {{end}}
             {{end}}
           </div>
+          {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
         </article>
         {{else}}
         <div class="empty-state">No Philly games are live today. Upcoming matchups are below.</div>
@@ -99,7 +100,7 @@
       </div>
       <div class="upcoming-list">
         {{range $g := .UpcomingGames}}
-        <article class="upcoming-item" style="border-left-color:{{(phillyTeam $g).Primary}}">
+        <article class="upcoming-item" data-game-id="{{$g.ID}}" style="border-left-color:{{(phillyTeam $g).Primary}}">
           <div class="upcoming-teams" style="--away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
             <div class="team-split team-split--away">
               {{if $g.AwayTeam.LogoURL}}<img src="{{$g.AwayTeam.LogoURL}}" alt="{{$g.AwayTeam.City}} {{$g.AwayTeam.Name}} logo">{{else}}<span>{{$g.AwayTeam.Abbr}}</span>{{end}}
@@ -117,12 +118,14 @@
             <span>{{formatDateTime $g.StartTime}}</span>
             {{if $g.IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
             <span>{{$g.Venue}}, {{$g.City}}</span>
+            {{with $g.Probable}}<span class="probable-pitchers"><strong>Probable pitchers</strong>{{$g.AwayTeam.Abbr}}: {{if .Away.Name}}{{.Away.Name}}{{else}}TBD{{end}} &middot; {{$g.HomeTeam.Abbr}}: {{if .Home.Name}}{{.Home.Name}}{{else}}TBD{{end}}</span>{{end}}
           </div>
           <div class="upcoming-tv">
             {{if $g.Broadcast}}
               {{$ch := index $g.Broadcast 0}}
               <span class="tv-badge {{$ch | tvClass}}">{{broadcastShort $ch}}</span>
             {{end}}
+            {{if and (eq $g.Sport "MLB") (isTodayGame $g)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{$g.ID}}" data-lineup-title="{{$g.AwayTeam.Name}} at {{$g.HomeTeam.Name}}">Lineup</button>{{end}}
           </div>
         </article>
         {{else}}

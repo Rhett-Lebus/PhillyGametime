@@ -87,7 +87,7 @@ func TestStatsLeagueSportOrderPrefersInSeasonThenTeamOrder(t *testing.T) {
 	}
 }
 
-func TestStatsLeagueSportOrderPrioritizesEaglesWhenNFLInSeason(t *testing.T) {
+func TestStatsLeagueSportOrderKeepsMLBFirstWhenMultipleSportsActive(t *testing.T) {
 	sports := []models.Sport{models.MLB, models.MLS, models.NFL, models.NHL, models.NBA}
 	activeSports := map[models.Sport]bool{
 		models.NFL: true,
@@ -99,10 +99,37 @@ func TestStatsLeagueSportOrderPrioritizesEaglesWhenNFLInSeason(t *testing.T) {
 		return statsLeagueSportLess(sports[i], sports[j], activeSports)
 	})
 
-	want := []models.Sport{models.NFL, models.MLB, models.MLS, models.NHL, models.NBA}
+	want := []models.Sport{models.MLB, models.NFL, models.MLS, models.NHL, models.NBA}
 	for i := range want {
 		if sports[i] != want[i] {
-			t.Fatalf("active Eagles/Phillies/Union stats order = %#v, want %#v", sports, want)
+			t.Fatalf("active Phillies/Eagles/Union stats order = %#v, want %#v", sports, want)
 		}
+	}
+}
+
+func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecific(t *testing.T) {
+	leagues := []models.LeagueStandings{
+		{
+			Sport: models.MLB,
+			Views: []models.StandingsView{
+				{Key: "division", Label: "NL East", Scope: "Division", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}}}},
+				{Key: "conference", Label: "National League", Scope: "Conference", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}}}},
+				{Key: "overall", Label: "MLB", Scope: "Overall", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}}}},
+			},
+		},
+	}
+
+	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.MLB: true})
+	if len(got) != 1 || len(got[0].Views) != 3 {
+		t.Fatalf("buildLeagueStandingsViews() = %#v, want one league with three views", got)
+	}
+	wantKeys := []string{"overall", "conference", "division"}
+	for i, want := range wantKeys {
+		if got[0].Views[i].Key != want {
+			t.Fatalf("view order = %#v, want keys %#v", got[0].Views, wantKeys)
+		}
+	}
+	if !got[0].Views[0].Active {
+		t.Fatalf("overall view Active = false, want true")
 	}
 }

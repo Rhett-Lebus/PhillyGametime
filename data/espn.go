@@ -274,10 +274,13 @@ type mlbScheduleGame struct {
 }
 
 type mlbScheduleTeam struct {
-	Team struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-	} `json:"team"`
+	Team            mlbTeamRef `json:"team"`
+	ProbablePitcher mlbPerson  `json:"probablePitcher"`
+}
+
+type mlbTeamRef struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 type mlbContentResp struct {
@@ -339,12 +342,25 @@ type mlbLiveFeedResp struct {
 }
 
 type mlbBoxscoreTeam struct {
-	Players map[string]mlbBoxscorePlayer `json:"players"`
+	Batters      []int                        `json:"batters"`
+	BattingOrder []int                        `json:"battingOrder"`
+	Pitchers     []int                        `json:"pitchers"`
+	Players      map[string]mlbBoxscorePlayer `json:"players"`
 }
 
 type mlbBoxscorePlayer struct {
-	Person mlbPerson `json:"person"`
-	Stats  struct {
+	Person       mlbPerson `json:"person"`
+	JerseyNumber string    `json:"jerseyNumber"`
+	Position     struct {
+		Abbreviation string `json:"abbreviation"`
+		Name         string `json:"name"`
+	} `json:"position"`
+	PitchHand struct {
+		Code        string `json:"code"`
+		Description string `json:"description"`
+	} `json:"pitchHand"`
+	BattingOrder string `json:"battingOrder"`
+	Stats        struct {
 		Pitching struct {
 			StrikeOuts *int `json:"strikeOuts"`
 		} `json:"pitching"`
@@ -372,8 +388,12 @@ type mlbPlay struct {
 }
 
 type mlbPerson struct {
-	ID       int    `json:"id"`
-	FullName string `json:"fullName"`
+	ID        int    `json:"id"`
+	FullName  string `json:"fullName"`
+	PitchHand struct {
+		Code        string `json:"code"`
+		Description string `json:"description"`
+	} `json:"pitchHand"`
 }
 
 type aiGameRecap struct {
@@ -544,6 +564,11 @@ type resultsCache struct {
 	expiresAt time.Time
 }
 
+type lineupCacheEntry struct {
+	lineup    *models.BaseballLineup
+	expiresAt time.Time
+}
+
 type highlightsCacheEntry struct {
 	Highlights  []models.VideoHighlight
 	Pending     bool
@@ -558,6 +583,7 @@ const (
 	highlightFoundTTL      = 24 * time.Hour
 	highlightUpgradeWindow = 12 * time.Hour
 	highlightStopAfter     = 48 * time.Hour
+	lineupPrefetchWindow   = 105 * time.Minute
 )
 
 type ESPNStore struct {
@@ -569,6 +595,7 @@ type ESPNStore struct {
 	standingsCache standingsCache
 	leagueCache    leagueStandingsCache
 	resultsCache   resultsCache
+	lineupCache    map[string]lineupCacheEntry
 	aiRecapCache   map[string]aiGameRecap
 	highlights     map[string]highlightsCacheEntry
 	aiInFlight     map[string]bool
@@ -577,7 +604,7 @@ type ESPNStore struct {
 }
 
 var (
-	mlbScheduleURL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team"
+	mlbScheduleURL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team,probablePitcher"
 	mlbLiveFeedURL = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
 	mlbContentURL  = "https://statsapi.mlb.com/api/v1/game/%d/content?highlightLimit=8"
 )
@@ -585,6 +612,7 @@ var (
 func NewESPNStore() *ESPNStore {
 	store := &ESPNStore{
 		client:        &http.Client{Timeout: 8 * time.Second},
+		lineupCache:   map[string]lineupCacheEntry{},
 		aiRecapCache:  map[string]aiGameRecap{},
 		highlights:    map[string]highlightsCacheEntry{},
 		aiInFlight:    map[string]bool{},
@@ -650,6 +678,11 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 					continue // ESPN scoreboards can include the full week's slate
 				}
 				g = s.enrichMLBGame(g)
+				if shouldPrefetchLineup(g, NowPhilly()) {
+					if lineup, ok := s.cachedMLBLineup(g); ok {
+						g.Lineup = lineup
+					}
+				}
 				if g.Status == models.StatusLive && g.Baseball != nil && g.Baseball.Pitcher != "" && g.Baseball.PitcherStrikeouts == "" {
 					g.Baseball.PitcherStrikeouts = s.fetchPitcherStrikeouts(g.ID, g.Baseball.Pitcher)
 				}
@@ -806,6 +839,8 @@ func (s *ESPNStore) GetUpcomingGames() []models.Game {
 	sort.Slice(games, func(i, j int) bool {
 		return games[i].StartTime.Before(games[j].StartTime)
 	})
+	s.attachUpcomingProbablePitchers(games)
+	s.prefetchUpcomingLineups(games, now)
 
 	s.mu.Lock()
 	s.upcomingCache = gameCache{games: games, expiresAt: time.Now().Add(5 * time.Minute)}
@@ -2991,7 +3026,230 @@ func (s *ESPNStore) enrichMLBGame(g models.Game) models.Game {
 		g.Baseball.CurrentPlay = desc
 	}
 	g.Baseball.Plays = latestMLBPlays(feed.LiveData.Plays.AllPlays, 4)
+	g.Lineup = mlbLineupFromFeed(feed, g)
 	return g
+}
+
+func (s *ESPNStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
+	game, ok := s.GetGameByID(id)
+	if !ok || game.Sport != models.MLB {
+		return nil, false
+	}
+	if game.Lineup != nil && hasLineupEntries(game.Lineup) {
+		return game.Lineup, true
+	}
+	return s.cachedMLBLineup(*game)
+}
+
+func (s *ESPNStore) prefetchUpcomingLineups(games []models.Game, now time.Time) {
+	for i := range games {
+		if !shouldPrefetchLineup(games[i], now) {
+			continue
+		}
+		if lineup, ok := s.cachedMLBLineup(games[i]); ok {
+			games[i].Lineup = lineup
+		}
+	}
+}
+
+func (s *ESPNStore) attachUpcomingProbablePitchers(games []models.Game) {
+	for i := range games {
+		if games[i].Sport != models.MLB || games[i].Probable != nil {
+			continue
+		}
+		games[i].Probable = s.fetchMLBProbablePitchers(games[i])
+	}
+}
+
+func shouldPrefetchLineup(g models.Game, now time.Time) bool {
+	if g.Sport != models.MLB || g.Lineup != nil {
+		return false
+	}
+	if !isSamePhillyDay(g.StartTime, now) {
+		return false
+	}
+	start := PhillyTime(g.StartTime)
+	if start.Before(now) {
+		return false
+	}
+	return !start.After(now.Add(lineupPrefetchWindow))
+}
+
+func isSamePhillyDay(t, ref time.Time) bool {
+	tt := PhillyTime(t)
+	rr := PhillyTime(ref)
+	ty, tm, td := tt.Date()
+	ry, rm, rd := rr.Date()
+	return ty == ry && tm == rm && td == rd
+}
+
+func (s *ESPNStore) cachedMLBLineup(game models.Game) (*models.BaseballLineup, bool) {
+	now := time.Now()
+	s.mu.RLock()
+	if cached, ok := s.lineupCache[game.ID]; ok && now.Before(cached.expiresAt) {
+		s.mu.RUnlock()
+		return cached.lineup, hasLineupEntries(cached.lineup)
+	}
+	s.mu.RUnlock()
+
+	lineup := s.fetchMLBLineup(game)
+	ttl := 10 * time.Minute
+	if hasLineupEntries(lineup) {
+		ttl = 12 * time.Hour
+	}
+
+	s.mu.Lock()
+	s.lineupCache[game.ID] = lineupCacheEntry{lineup: lineup, expiresAt: now.Add(ttl)}
+	s.mu.Unlock()
+
+	return lineup, hasLineupEntries(lineup)
+}
+
+func (s *ESPNStore) fetchMLBLineup(g models.Game) *models.BaseballLineup {
+	gamePk := s.findMLBGamePk(g)
+	if gamePk == 0 {
+		return nil
+	}
+	var feed mlbLiveFeedResp
+	if err := s.fetchJSON(fmt.Sprintf(mlbLiveFeedURL, gamePk), &feed); err != nil {
+		return nil
+	}
+	return mlbLineupFromFeed(feed, g)
+}
+
+func (s *ESPNStore) fetchMLBProbablePitchers(g models.Game) *models.BaseballProbablePitchers {
+	game := s.findMLBScheduleGame(g)
+	if game.GamePk == 0 {
+		return nil
+	}
+	probable := &models.BaseballProbablePitchers{
+		Away: mlbProbablePitcher(game.Teams.Away.ProbablePitcher),
+		Home: mlbProbablePitcher(game.Teams.Home.ProbablePitcher),
+	}
+	if probable.Away.Name == "" && probable.Home.Name == "" {
+		return nil
+	}
+	return probable
+}
+
+func mlbProbablePitcher(person mlbPerson) models.BaseballLineupPitcher {
+	name := strings.TrimSpace(person.FullName)
+	if name == "" {
+		return models.BaseballLineupPitcher{}
+	}
+	handedness := strings.TrimSpace(person.PitchHand.Code)
+	if handedness == "" {
+		handedness = strings.TrimSpace(person.PitchHand.Description)
+	}
+	return models.BaseballLineupPitcher{Name: name, Handedness: handedness}
+}
+
+func mlbLineupFromFeed(feed mlbLiveFeedResp, g models.Game) *models.BaseballLineup {
+	lineup := &models.BaseballLineup{
+		AwayTeam:    g.AwayTeam,
+		HomeTeam:    g.HomeTeam,
+		AwayPitcher: mlbStartingPitcher(feed.LiveData.Boxscore.Teams.Away),
+		HomePitcher: mlbStartingPitcher(feed.LiveData.Boxscore.Teams.Home),
+		Away:        mlbLineupEntries(feed.LiveData.Boxscore.Teams.Away),
+		Home:        mlbLineupEntries(feed.LiveData.Boxscore.Teams.Home),
+	}
+	if !hasLineupEntries(lineup) {
+		return nil
+	}
+	return lineup
+}
+
+func mlbStartingPitcher(team mlbBoxscoreTeam) models.BaseballLineupPitcher {
+	for _, id := range team.Pitchers {
+		if id == 0 {
+			continue
+		}
+		player, ok := team.Players["ID"+strconv.Itoa(id)]
+		if !ok {
+			continue
+		}
+		if pitcher := mlbLineupPitcher(player); pitcher.Name != "" {
+			return pitcher
+		}
+	}
+	for _, player := range team.Players {
+		position := strings.TrimSpace(player.Position.Abbreviation)
+		if position != "P" {
+			continue
+		}
+		if pitcher := mlbLineupPitcher(player); pitcher.Name != "" {
+			return pitcher
+		}
+	}
+	return models.BaseballLineupPitcher{}
+}
+
+func mlbLineupPitcher(player mlbBoxscorePlayer) models.BaseballLineupPitcher {
+	name := strings.TrimSpace(player.Person.FullName)
+	if name == "" {
+		return models.BaseballLineupPitcher{}
+	}
+	handedness := strings.TrimSpace(player.PitchHand.Code)
+	if handedness == "" {
+		handedness = strings.TrimSpace(player.PitchHand.Description)
+	}
+	return models.BaseballLineupPitcher{
+		Name:       name,
+		Handedness: handedness,
+	}
+}
+
+func mlbLineupEntries(team mlbBoxscoreTeam) []models.BaseballLineupEntry {
+	playerIDs := team.BattingOrder
+	if len(playerIDs) == 0 {
+		playerIDs = team.Batters
+	}
+	entries := make([]models.BaseballLineupEntry, 0, len(playerIDs))
+	seen := map[int]bool{}
+	for _, id := range playerIDs {
+		if id == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		player, ok := team.Players["ID"+strconv.Itoa(id)]
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(player.Person.FullName)
+		if name == "" {
+			continue
+		}
+		order := len(entries) + 1
+		if parsed, err := strconv.Atoi(strings.TrimSpace(player.BattingOrder)); err == nil && parsed > 0 {
+			order = parsed / 100
+			if order == 0 {
+				order = parsed
+			}
+		}
+		position := strings.TrimSpace(player.Position.Abbreviation)
+		if position == "" {
+			position = strings.TrimSpace(player.Position.Name)
+		}
+		entries = append(entries, models.BaseballLineupEntry{
+			Order:    order,
+			Name:     name,
+			Position: position,
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Order == entries[j].Order {
+			return entries[i].Name < entries[j].Name
+		}
+		return entries[i].Order < entries[j].Order
+	})
+	if len(entries) > 9 {
+		entries = entries[:9]
+	}
+	return entries
+}
+
+func hasLineupEntries(lineup *models.BaseballLineup) bool {
+	return lineup != nil && (len(lineup.Away) > 0 || len(lineup.Home) > 0)
 }
 
 func mlbPitcherStrikeouts(feed mlbLiveFeedResp, pitcher mlbPerson) string {
@@ -3020,20 +3278,24 @@ func mlbPersonMatches(a, b mlbPerson) bool {
 }
 
 func (s *ESPNStore) findMLBGamePk(g models.Game) int {
+	return s.findMLBScheduleGame(g).GamePk
+}
+
+func (s *ESPNStore) findMLBScheduleGame(g models.Game) mlbScheduleGame {
 	date := PhillyTime(g.StartTime).Format("2006-01-02")
 	url := fmt.Sprintf(mlbScheduleURL, date)
 	var schedule mlbScheduleResp
 	if err := s.fetchJSON(url, &schedule); err != nil {
-		return 0
+		return mlbScheduleGame{}
 	}
 	for _, d := range schedule.Dates {
 		for _, game := range d.Games {
 			if mlbScheduleMatchesGame(game, g) {
-				return game.GamePk
+				return game
 			}
 		}
 	}
-	return 0
+	return mlbScheduleGame{}
 }
 
 func mlbScheduleMatchesGame(mlbGame mlbScheduleGame, g models.Game) bool {

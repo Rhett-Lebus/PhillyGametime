@@ -48,6 +48,30 @@ func TestGetTodaysGamesRequestsPhiladelphiaDate(t *testing.T) {
 	}
 }
 
+func TestShouldPrefetchLineupWithinPregameWindow(t *testing.T) {
+	now := DatePhilly(2026, time.June, 9, 17, 0, 0)
+	game := models.Game{
+		ID:        "mlb-game",
+		Sport:     models.MLB,
+		Status:    models.StatusScheduled,
+		StartTime: now.Add(105 * time.Minute),
+	}
+	if !shouldPrefetchLineup(game, now) {
+		t.Fatal("shouldPrefetchLineup() = false, want true at 1h45m before first pitch")
+	}
+
+	game.StartTime = now.Add(106 * time.Minute)
+	if shouldPrefetchLineup(game, now) {
+		t.Fatal("shouldPrefetchLineup() = true, want false before prefetch window")
+	}
+
+	game.StartTime = now.Add(30 * time.Minute)
+	game.Sport = models.NBA
+	if shouldPrefetchLineup(game, now) {
+		t.Fatal("shouldPrefetchLineup() = true for non-MLB game")
+	}
+}
+
 func TestFindMLBGamePkMatchesPhilliesOpponent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

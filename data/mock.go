@@ -130,6 +130,7 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 					{Inning: 6, HalfInning: "Bottom", Description: "Kodai Senga strikes out Brandon Marsh swinging."},
 				},
 			},
+			Lineup:    philliesMetsLineup(),
 			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 13, 5, 0),
 			Venue:     "Citizens Bank Park",
 			City:      "Philadelphia, PA",
@@ -144,6 +145,21 @@ func (s *MockStore) GetUpcomingGames() []models.Game {
 	next := func(days int) time.Time { return base.AddDate(0, 0, days) }
 
 	return []models.Game{
+		{
+			ID:        "upcoming-phillies-mets",
+			HomeTeam:  Phillies,
+			AwayTeam:  Mets,
+			Status:    models.StatusScheduled,
+			StartTime: DatePhilly(next(1).Year(), next(1).Month(), next(1).Day(), 18, 40, 0),
+			Venue:     "Citizens Bank Park",
+			City:      "Philadelphia, PA",
+			Broadcast: []string{"NBC Sports Philadelphia"},
+			Sport:     models.MLB,
+			Probable: &models.BaseballProbablePitchers{
+				Away: models.BaseballLineupPitcher{Name: "Kodai Senga", Handedness: "R"},
+				Home: models.BaseballLineupPitcher{Name: "Cristopher Sanchez", Handedness: "L"},
+			},
+		},
 		{
 			ID:          "upcoming-eagles-giants",
 			HomeTeam:    Eagles,
@@ -348,4 +364,43 @@ func (s *MockStore) GetGameByID(id string) (*models.Game, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (s *MockStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
+	game, ok := s.GetGameByID(id)
+	if !ok || game.Sport != models.MLB || game.Lineup == nil {
+		return nil, false
+	}
+	return game.Lineup, true
+}
+
+func philliesMetsLineup() *models.BaseballLineup {
+	return &models.BaseballLineup{
+		AwayTeam:    Mets,
+		HomeTeam:    Phillies,
+		AwayPitcher: models.BaseballLineupPitcher{Name: "Kodai Senga", Handedness: "R"},
+		HomePitcher: models.BaseballLineupPitcher{Name: "Cristopher Sanchez", Handedness: "L"},
+		Away: []models.BaseballLineupEntry{
+			{Order: 1, Name: "Francisco Lindor", Position: "SS"},
+			{Order: 2, Name: "Brandon Nimmo", Position: "CF"},
+			{Order: 3, Name: "Pete Alonso", Position: "1B"},
+			{Order: 4, Name: "Juan Soto", Position: "RF"},
+			{Order: 5, Name: "Mark Vientos", Position: "3B"},
+			{Order: 6, Name: "Jeff McNeil", Position: "2B"},
+			{Order: 7, Name: "Starling Marte", Position: "LF"},
+			{Order: 8, Name: "Luis Torrens", Position: "C"},
+			{Order: 9, Name: "Kodai Senga", Position: "P"},
+		},
+		Home: []models.BaseballLineupEntry{
+			{Order: 1, Name: "Trea Turner", Position: "SS"},
+			{Order: 2, Name: "Kyle Schwarber", Position: "DH"},
+			{Order: 3, Name: "Bryce Harper", Position: "1B"},
+			{Order: 4, Name: "Alec Bohm", Position: "3B"},
+			{Order: 5, Name: "Nick Castellanos", Position: "RF"},
+			{Order: 6, Name: "Brandon Marsh", Position: "LF"},
+			{Order: 7, Name: "J.T. Realmuto", Position: "C"},
+			{Order: 8, Name: "Bryson Stott", Position: "2B"},
+			{Order: 9, Name: "Cristopher Sanchez", Position: "P"},
+		},
+	}
 }

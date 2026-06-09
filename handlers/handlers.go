@@ -119,6 +119,13 @@ func (h *Handler) buildFuncMap() template.FuncMap {
 				return gameTime.Format("Monday")
 			}
 		},
+		"isTodayGame": func(g models.Game) bool {
+			now := data.NowPhilly()
+			gameTime := data.PhillyTime(g.StartTime)
+			ny, nm, nd := now.Date()
+			gy, gm, gd := gameTime.Date()
+			return ny == gy && nm == gm && nd == gd
+		},
 		"formatDateTime": func(t time.Time) string {
 			return data.PhillyTime(t).Format("Monday, Jan 2 - 3:04 PM MST")
 		},
@@ -629,7 +636,11 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports ma
 		}
 		scopeViews := make([]LeagueScopeView, 0, len(league.Views))
 		activeScope := preferredLeagueScope(league.Views)
-		for _, view := range league.Views {
+		leagueViews := append([]models.StandingsView(nil), league.Views...)
+		sort.SliceStable(leagueViews, func(i, j int) bool {
+			return standingsScopeOrder(leagueViews[i].Key) < standingsScopeOrder(leagueViews[j].Key)
+		})
+		for _, view := range leagueViews {
 			if len(view.Rows) == 0 {
 				continue
 			}
@@ -673,11 +684,11 @@ func statsLeagueSportLess(a, b models.Sport, activeSports map[models.Sport]bool)
 
 func statsSportOrder(sport models.Sport) int {
 	switch sport {
-	case models.NFL:
-		return 0
-	case models.NHL:
-		return 1
 	case models.MLB:
+		return 0
+	case models.NFL:
+		return 1
+	case models.NHL:
 		return 2
 	case models.NBA:
 		return 3
@@ -689,7 +700,7 @@ func statsSportOrder(sport models.Sport) int {
 }
 
 func preferredLeagueScope(views []models.StandingsView) string {
-	for _, key := range []string{"division", "conference", "league", "overall"} {
+	for _, key := range []string{"overall", "league", "conference", "division"} {
 		for _, view := range views {
 			if strings.HasPrefix(view.Key, key) && len(view.Rows) > 0 {
 				return view.Key
@@ -700,6 +711,21 @@ func preferredLeagueScope(views []models.StandingsView) string {
 		return ""
 	}
 	return views[0].Key
+}
+
+func standingsScopeOrder(key string) int {
+	switch {
+	case strings.HasPrefix(key, "overall"):
+		return 0
+	case strings.HasPrefix(key, "league"):
+		return 1
+	case strings.HasPrefix(key, "conference"):
+		return 2
+	case strings.HasPrefix(key, "division"):
+		return 3
+	default:
+		return 9
+	}
 }
 
 func teamLabelForSport(sport models.Sport) string {
@@ -733,6 +759,38 @@ func (h *Handler) APIScores(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) APIUpcoming(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.store.GetUpcomingGames())
+}
+
+func (h *Handler) APIGameLineup(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	game, ok := h.store.GetGameByID(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if game.Sport != models.MLB {
+		http.Error(w, "lineups are available for baseball games only", http.StatusBadRequest)
+		return
+	}
+
+	if game.Lineup != nil {
+		writeJSON(w, map[string]interface{}{"Available": true, "Lineup": game.Lineup})
+		return
+	}
+
+	lineupProvider, ok := h.store.(interface {
+		GetGameLineup(string) (*models.BaseballLineup, bool)
+	})
+	if !ok {
+		writeJSON(w, map[string]interface{}{"Available": false, "Message": "Lineup has not been posted yet."})
+		return
+	}
+	lineup, available := lineupProvider.GetGameLineup(id)
+	if !available {
+		writeJSON(w, map[string]interface{}{"Available": false, "Message": "Lineup has not been posted yet."})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"Available": true, "Lineup": lineup})
 }
 
 func (h *Handler) APIStandings(w http.ResponseWriter, r *http.Request) {

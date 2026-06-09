@@ -34,10 +34,12 @@
           <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
         </div>
       </div>
+      {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
     </article>
     {{else}}
       {{with .NextGame}}
-      <article class="team-next-game" style="border-left-color:{{(phillyTeam .).Primary}}">
+      {{$g := .}}
+      <article class="team-next-game" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}">
         <div class="team-next-game__logos" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
           <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
           <strong>{{.AwayTeam.Name}} {{vsAt .}} {{.HomeTeam.Name}}</strong>
@@ -47,7 +49,9 @@
           <span>{{formatDateTime .StartTime}}</span>
           {{if .IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
           <span>{{.Venue}}, {{.City}}</span>
+          {{with $g.Probable}}<span class="probable-pitchers"><strong>Probable pitchers</strong>{{$g.AwayTeam.Abbr}}: {{if .Away.Name}}{{.Away.Name}}{{else}}TBD{{end}} &middot; {{$g.HomeTeam.Abbr}}: {{if .Home.Name}}{{.Home.Name}}{{else}}TBD{{end}}</span>{{end}}
           {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
+          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
         </div>
       </article>
       {{else}}
@@ -61,7 +65,8 @@
     </div>
     <div class="upcoming-list team-upcoming-list">
       {{range .Upcoming}}
-      <article class="upcoming-item" style="border-left-color:{{(phillyTeam .).Primary}}">
+      {{$g := .}}
+      <article class="upcoming-item" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}">
         <div class="upcoming-teams" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
           <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
           <div class="team-matchup"><strong>{{.AwayTeam.Name}}</strong><span>{{vsAt .}}</span><strong>{{.HomeTeam.Name}}</strong></div>
@@ -71,6 +76,8 @@
           <span>{{formatDateTime .StartTime}}</span>
           {{if .IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
           <span>{{.Venue}}, {{.City}}</span>
+          {{with $g.Probable}}<span class="probable-pitchers"><strong>Probable pitchers</strong>{{$g.AwayTeam.Abbr}}: {{if .Away.Name}}{{.Away.Name}}{{else}}TBD{{end}} &middot; {{$g.HomeTeam.Abbr}}: {{if .Home.Name}}{{.Home.Name}}{{else}}TBD{{end}}</span>{{end}}
+          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
         </div>
       </article>
       {{else}}
