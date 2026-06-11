@@ -182,7 +182,11 @@ type espnStatus struct {
 }
 
 type espnStatusType struct {
+	State       string `json:"state"`
+	Completed   bool   `json:"completed"`
 	Name        string `json:"name"`
+	Description string `json:"description"`
+	Detail      string `json:"detail"`
 	ShortDetail string `json:"shortDetail"`
 }
 
@@ -204,7 +208,10 @@ type espnStandingsData struct {
 }
 
 type espnStandingsEntry struct {
-	Team  espnTeam   `json:"team"`
+	Team espnTeam `json:"team"`
+	Note struct {
+		Description string `json:"description"`
+	} `json:"note"`
 	Stats []espnStat `json:"stats"`
 }
 
@@ -359,12 +366,20 @@ type mlbBoxscorePlayer struct {
 		Code        string `json:"code"`
 		Description string `json:"description"`
 	} `json:"pitchHand"`
-	BattingOrder string `json:"battingOrder"`
-	Stats        struct {
-		Pitching struct {
-			StrikeOuts *int `json:"strikeOuts"`
-		} `json:"pitching"`
-	} `json:"stats"`
+	BattingOrder string                 `json:"battingOrder"`
+	Stats        mlbBoxscorePlayerStats `json:"stats"`
+	SeasonStats  mlbBoxscorePlayerStats `json:"seasonStats"`
+	CareerStats  mlbBoxscorePlayerStats `json:"careerStats"`
+}
+
+type mlbBoxscorePlayerStats struct {
+	Batting struct {
+		Avg string `json:"avg"`
+	} `json:"batting"`
+	Pitching struct {
+		ERA        string `json:"era"`
+		StrikeOuts *int   `json:"strikeOuts"`
+	} `json:"pitching"`
 }
 
 type mlbPlay struct {
@@ -559,6 +574,11 @@ type leagueStandingsCache struct {
 	expiresAt time.Time
 }
 
+type worldCupCache struct {
+	cup       models.WorldCup
+	expiresAt time.Time
+}
+
 type resultsCache struct {
 	results   []models.RecentResult
 	expiresAt time.Time
@@ -594,6 +614,7 @@ type ESPNStore struct {
 	schedulesCache scheduleCache
 	standingsCache standingsCache
 	leagueCache    leagueStandingsCache
+	worldCupCache  worldCupCache
 	resultsCache   resultsCache
 	lineupCache    map[string]lineupCacheEntry
 	aiRecapCache   map[string]aiGameRecap
@@ -604,9 +625,11 @@ type ESPNStore struct {
 }
 
 var (
-	mlbScheduleURL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team,probablePitcher"
-	mlbLiveFeedURL = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
-	mlbContentURL  = "https://statsapi.mlb.com/api/v1/game/%d/content?highlightLimit=8"
+	mlbScheduleURL        = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=%s&teamId=143&hydrate=team,probablePitcher"
+	mlbLiveFeedURL        = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
+	mlbContentURL         = "https://statsapi.mlb.com/api/v1/game/%d/content?highlightLimit=8"
+	worldCupScoreboardURL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
+	worldCupStandingsURL  = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings"
 )
 
 func NewESPNStore() *ESPNStore {
@@ -1457,6 +1480,251 @@ func standingsScopeLabel(name, fallback string) string {
 		return "League"
 	default:
 		return fallback
+	}
+}
+
+func (s *ESPNStore) GetWorldCup() models.WorldCup {
+	s.mu.RLock()
+	if time.Now().Before(s.worldCupCache.expiresAt) {
+		cup := s.worldCupCache.cup
+		s.mu.RUnlock()
+		return cup
+	}
+	s.mu.RUnlock()
+
+	now := NowPhilly()
+	cup := models.WorldCup{
+		Groups:  s.fetchWorldCupGroups(),
+		Bracket: s.fetchWorldCupBracket(),
+		Watch:   worldCupWatchInfo(),
+	}
+	applyWorldCupBracketLayout(&cup)
+
+	start := now.AddDate(0, 0, -1).Format("20060102")
+	end := now.AddDate(0, 0, 10).Format("20060102")
+	matches := s.fetchWorldCupMatches(start + "-" + end)
+	for _, match := range matches {
+		switch {
+		case match.Status == models.StatusLive:
+			cup.Live = append(cup.Live, match)
+		case match.Status == models.StatusScheduled && !PhillyTime(match.StartTime).Before(now):
+			cup.Upcoming = append(cup.Upcoming, match)
+		}
+	}
+	sort.Slice(cup.Live, func(i, j int) bool {
+		return cup.Live[i].StartTime.Before(cup.Live[j].StartTime)
+	})
+	sort.Slice(cup.Upcoming, func(i, j int) bool {
+		return cup.Upcoming[i].StartTime.Before(cup.Upcoming[j].StartTime)
+	})
+	if len(cup.Upcoming) > 12 {
+		cup.Upcoming = cup.Upcoming[:12]
+	}
+
+	ttl := 10 * time.Minute
+	if len(cup.Live) > 0 || hasWorldCupMatchNearLiveWindow(matches, now) {
+		ttl = 30 * time.Second
+	}
+	s.mu.Lock()
+	s.worldCupCache = worldCupCache{cup: cup, expiresAt: time.Now().Add(ttl)}
+	s.mu.Unlock()
+	return cup
+}
+
+func hasWorldCupMatchNearLiveWindow(matches []models.WorldCupMatch, now time.Time) bool {
+	for _, match := range matches {
+		start := PhillyTime(match.StartTime)
+		if now.After(start.Add(-30*time.Minute)) && now.Before(start.Add(3*time.Hour)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *ESPNStore) fetchWorldCupMatches(dates string) []models.WorldCupMatch {
+	var sb espnScoreboard
+	url := worldCupScoreboardURL + "?dates=" + dates + "&limit=1000"
+	if err := s.fetchJSON(url, &sb); err != nil {
+		return nil
+	}
+	matches := make([]models.WorldCupMatch, 0, len(sb.Events))
+	for _, ev := range sb.Events {
+		if match, ok := worldCupMatchFromEvent(ev); ok {
+			matches = append(matches, match)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].StartTime.Before(matches[j].StartTime)
+	})
+	return matches
+}
+
+func (s *ESPNStore) fetchWorldCupBracket() []models.WorldCupRound {
+	matches := s.fetchWorldCupMatches("20260628-20260719")
+	roundOrder := []string{"Round of 32", "Round of 16", "Quarterfinals", "Semifinals", "3rd-Place Match", "Final"}
+	roundsByName := map[string][]models.WorldCupMatch{}
+	for _, match := range matches {
+		name := worldCupStageLabel(match.Stage)
+		if strings.EqualFold(name, "Group Stage") || name == "" {
+			continue
+		}
+		roundsByName[name] = append(roundsByName[name], match)
+	}
+	rounds := make([]models.WorldCupRound, 0, len(roundOrder))
+	for _, name := range roundOrder {
+		if matches := roundsByName[name]; len(matches) > 0 {
+			rounds = append(rounds, models.WorldCupRound{Name: name, Matches: matches})
+		}
+	}
+	return rounds
+}
+
+func (s *ESPNStore) fetchWorldCupGroups() []models.WorldCupGroup {
+	var resp espnStandingsResp
+	if err := s.fetchJSON(worldCupStandingsURL, &resp); err != nil {
+		return nil
+	}
+	groups := make([]models.WorldCupGroup, 0, len(resp.Children))
+	for _, child := range resp.Children {
+		if len(child.Standings.Entries) == 0 {
+			continue
+		}
+		rows := make([]models.WorldCupStanding, 0, len(child.Standings.Entries))
+		for _, entry := range child.Standings.Entries {
+			rows = append(rows, worldCupStandingFromEntry(entry))
+		}
+		groups = append(groups, models.WorldCupGroup{Name: child.Name, Rows: rows})
+	}
+	return groups
+}
+
+func applyWorldCupBracketLayout(cup *models.WorldCup) {
+	if cup == nil || len(cup.Bracket) == 0 {
+		return
+	}
+	cup.LeftBracket = nil
+	cup.RightBracket = nil
+	cup.Final = models.WorldCupMatch{}
+	for _, round := range cup.Bracket {
+		name := worldCupStageLabel(round.Name)
+		if name == "Final" {
+			if len(round.Matches) > 0 {
+				cup.Final = round.Matches[0]
+			}
+			continue
+		}
+		if name == "3rd-Place Match" || len(round.Matches) == 0 {
+			continue
+		}
+		left, right := splitWorldCupRound(round)
+		if len(left.Matches) > 0 {
+			cup.LeftBracket = append(cup.LeftBracket, left)
+		}
+		if len(right.Matches) > 0 {
+			cup.RightBracket = append(cup.RightBracket, right)
+		}
+	}
+	reverseWorldCupRounds(cup.RightBracket)
+}
+
+func splitWorldCupRound(round models.WorldCupRound) (models.WorldCupRound, models.WorldCupRound) {
+	half := (len(round.Matches) + 1) / 2
+	left := models.WorldCupRound{Name: round.Name, Matches: append([]models.WorldCupMatch(nil), round.Matches[:half]...)}
+	right := models.WorldCupRound{Name: round.Name, Matches: append([]models.WorldCupMatch(nil), round.Matches[half:]...)}
+	return left, right
+}
+
+func reverseWorldCupRounds(rounds []models.WorldCupRound) {
+	for i, j := 0, len(rounds)-1; i < j; i, j = i+1, j-1 {
+		rounds[i], rounds[j] = rounds[j], rounds[i]
+	}
+}
+
+func worldCupMatchFromEvent(ev espnEvent) (models.WorldCupMatch, bool) {
+	game, ok := parseESPNEvent(ev, models.FIFA)
+	if !ok {
+		return models.WorldCupMatch{}, false
+	}
+	return models.WorldCupMatch{
+		ID:        game.ID,
+		Stage:     worldCupStageLabel(firstNonEmpty(ev.Season.Name, ev.Season.Slug)),
+		HomeTeam:  game.HomeTeam,
+		AwayTeam:  game.AwayTeam,
+		HomeScore: game.HomeScore,
+		AwayScore: game.AwayScore,
+		Status:    game.Status,
+		Period:    game.Period,
+		TimeLeft:  game.TimeLeft,
+		StartTime: game.StartTime,
+		Venue:     game.Venue,
+		City:      game.City,
+		Broadcast: game.Broadcast,
+	}, true
+}
+
+func worldCupStandingFromEntry(entry espnStandingsEntry) models.WorldCupStanding {
+	return models.WorldCupStanding{
+		Team:    espnToTeam(entry.Team, models.FIFA),
+		Played:  worldCupStandingDisplay(entry, "gamesPlayed", "GP"),
+		Wins:    worldCupStandingDisplay(entry, "wins", "W"),
+		Draws:   worldCupStandingDisplay(entry, "ties", "draws", "D"),
+		Losses:  worldCupStandingDisplay(entry, "losses", "L"),
+		For:     worldCupStandingDisplay(entry, "pointsFor", "F"),
+		Against: worldCupStandingDisplay(entry, "pointsAgainst", "A"),
+		Diff:    worldCupStandingDisplay(entry, "pointDifferential", "GD"),
+		Points:  worldCupStandingDisplay(entry, "points", "P"),
+		Note:    strings.TrimSpace(entry.Note.Description),
+	}
+}
+
+func worldCupStandingDisplay(entry espnStandingsEntry, names ...string) string {
+	for _, name := range names {
+		for _, stat := range entry.Stats {
+			if strings.EqualFold(stat.Name, name) ||
+				strings.EqualFold(stat.Abbreviation, name) ||
+				strings.EqualFold(stat.DisplayName, name) ||
+				strings.EqualFold(stat.ShortName, name) {
+				if strings.TrimSpace(stat.DisplayValue) != "" {
+					return stat.DisplayValue
+				}
+				return strconv.Itoa(int(stat.Value))
+			}
+		}
+	}
+	return "0"
+}
+
+func worldCupStageLabel(stage string) string {
+	stage = strings.TrimSpace(strings.ReplaceAll(stage, "-", " "))
+	if stage == "" {
+		return ""
+	}
+	lower := strings.ToLower(stage)
+	switch {
+	case strings.Contains(lower, "round of 32"):
+		return "Round of 32"
+	case strings.Contains(lower, "rd of 16"), strings.Contains(lower, "round of 16"):
+		return "Round of 16"
+	case strings.Contains(lower, "quarter"):
+		return "Quarterfinals"
+	case strings.Contains(lower, "semi"):
+		return "Semifinals"
+	case strings.Contains(lower, "3rd"), strings.Contains(lower, "third"):
+		return "3rd-Place Match"
+	case strings.Contains(lower, "final"):
+		return "Final"
+	case strings.Contains(lower, "group"):
+		return "Group Stage"
+	default:
+		return strings.Title(stage)
+	}
+}
+
+func worldCupWatchInfo() []models.WorldCupWatch {
+	return []models.WorldCupWatch{
+		{Label: "English TV", Description: "National match windows on FOX or FS1.", Networks: []string{"FOX", "FS1"}},
+		{Label: "Spanish TV", Description: "Spanish-language coverage listed by ESPN as Tele.", Networks: []string{"Tele"}},
+		{Label: "Streaming", Description: "Streaming availability appears on match cards when listed.", Networks: []string{"Peacock"}},
 	}
 }
 
@@ -2910,11 +3178,15 @@ func espnToTeam(t espnTeam, sport models.Sport) models.Team {
 }
 
 func espnGameStatus(s espnStatus) models.GameStatus {
-	n := s.Type.Name
+	n := strings.ToUpper(strings.TrimSpace(s.Type.Name))
+	state := strings.ToLower(strings.TrimSpace(s.Type.State))
+	detail := strings.ToLower(strings.Join([]string{s.Type.Description, s.Type.Detail, s.Type.ShortDetail}, " "))
 	switch {
-	case strings.HasPrefix(n, "STATUS_FINAL"), n == "STATUS_FULL_TIME":
+	case s.Type.Completed, state == "post", strings.HasPrefix(n, "STATUS_FINAL"), n == "STATUS_FULL_TIME", strings.Contains(detail, "full time"), strings.Contains(detail, "full-time"):
 		return models.StatusFinal
-	case n == "STATUS_IN_PROGRESS", n == "STATUS_HALFTIME", n == "STATUS_END_PERIOD":
+	case state == "in", n == "STATUS_IN_PROGRESS", n == "STATUS_HALFTIME", n == "STATUS_END_PERIOD",
+		strings.Contains(n, "IN_PROGRESS"), strings.Contains(n, "HALFTIME"), strings.Contains(n, "HALF_TIME"),
+		strings.Contains(detail, "1st half"), strings.Contains(detail, "first half"), strings.Contains(detail, "2nd half"), strings.Contains(detail, "second half"), strings.Contains(detail, "halftime"), strings.Contains(detail, "stoppage"):
 		return models.StatusLive
 	case strings.Contains(n, "DELAY"):
 		return models.StatusDelayed
@@ -3035,7 +3307,7 @@ func (s *ESPNStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 	if !ok || game.Sport != models.MLB {
 		return nil, false
 	}
-	if game.Lineup != nil && hasLineupEntries(game.Lineup) {
+	if game.Lineup != nil && hasCompleteLineupEntries(game.Lineup) {
 		return game.Lineup, true
 	}
 	return s.cachedMLBLineup(*game)
@@ -3094,8 +3366,10 @@ func (s *ESPNStore) cachedMLBLineup(game models.Game) (*models.BaseballLineup, b
 
 	lineup := s.fetchMLBLineup(game)
 	ttl := 10 * time.Minute
-	if hasLineupEntries(lineup) {
+	if hasCompleteLineupEntries(lineup) {
 		ttl = 12 * time.Hour
+	} else if hasLineupEntries(lineup) {
+		ttl = 2 * time.Minute
 	}
 
 	s.mu.Lock()
@@ -3196,7 +3470,34 @@ func mlbLineupPitcher(player mlbBoxscorePlayer) models.BaseballLineupPitcher {
 	return models.BaseballLineupPitcher{
 		Name:       name,
 		Handedness: handedness,
+		ERA:        mlbPitcherERA(player),
 	}
+}
+
+func mlbPitcherERA(player mlbBoxscorePlayer) string {
+	for _, value := range []string{
+		player.SeasonStats.Pitching.ERA,
+		player.CareerStats.Pitching.ERA,
+		player.Stats.Pitching.ERA,
+	} {
+		if stat := strings.TrimSpace(value); stat != "" && stat != ".---" && stat != "-.--" {
+			return stat
+		}
+	}
+	return ""
+}
+
+func mlbBattingAverage(player mlbBoxscorePlayer) string {
+	for _, value := range []string{
+		player.SeasonStats.Batting.Avg,
+		player.CareerStats.Batting.Avg,
+		player.Stats.Batting.Avg,
+	} {
+		if stat := strings.TrimSpace(value); stat != "" && stat != ".---" && stat != "---" {
+			return stat
+		}
+	}
+	return ""
 }
 
 func mlbLineupEntries(team mlbBoxscoreTeam) []models.BaseballLineupEntry {
@@ -3231,9 +3532,10 @@ func mlbLineupEntries(team mlbBoxscoreTeam) []models.BaseballLineupEntry {
 			position = strings.TrimSpace(player.Position.Name)
 		}
 		entries = append(entries, models.BaseballLineupEntry{
-			Order:    order,
-			Name:     name,
-			Position: position,
+			Order:          order,
+			Name:           name,
+			Position:       position,
+			BattingAverage: mlbBattingAverage(player),
 		})
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
@@ -3250,6 +3552,10 @@ func mlbLineupEntries(team mlbBoxscoreTeam) []models.BaseballLineupEntry {
 
 func hasLineupEntries(lineup *models.BaseballLineup) bool {
 	return lineup != nil && (len(lineup.Away) > 0 || len(lineup.Home) > 0)
+}
+
+func hasCompleteLineupEntries(lineup *models.BaseballLineup) bool {
+	return lineup != nil && len(lineup.Away) > 0 && len(lineup.Home) > 0
 }
 
 func mlbPitcherStrikeouts(feed mlbLiveFeedResp, pitcher mlbPerson) string {
@@ -3499,7 +3805,7 @@ func canonicalPhillyTeam(team models.Team) models.Team {
 func fallbackLogoURL(team models.Team) string {
 	abbr := strings.ToLower(team.Abbr)
 	if abbr == "" {
-		return ""
+		abbr = strings.ToLower(team.Name)
 	}
 	switch team.Sport {
 	case models.NFL:
@@ -3514,6 +3820,205 @@ func fallbackLogoURL(team models.Team) string {
 		if team.ID != "" {
 			return "https://a.espncdn.com/i/teamlogos/soccer/500/" + team.ID + ".png"
 		}
+	case models.FIFA:
+		return worldCupFlagLogoURL(team)
+	}
+	return ""
+}
+
+func worldCupFlagLogoURL(team models.Team) string {
+	code := worldCupFlagCode(team.Abbr)
+	if code == "" {
+		code = worldCupFlagCode(team.Name)
+	}
+	if code == "" {
+		return ""
+	}
+	return "https://flagcdn.com/w80/" + code + ".png"
+}
+
+func worldCupFlagCode(value string) string {
+	key := strings.ToUpper(strings.TrimSpace(value))
+	key = strings.NewReplacer(
+		"Á", "A",
+		"É", "E",
+		"Í", "I",
+		"Ó", "O",
+		"Ú", "U",
+		"Ç", "C",
+		"'", "",
+		".", "",
+		"-", " ",
+	).Replace(key)
+	key = strings.Join(strings.Fields(key), " ")
+	switch key {
+	case "ALG":
+		return "dz"
+	case "ARG":
+		return "ar"
+	case "AUS":
+		return "au"
+	case "AUT":
+		return "at"
+	case "BEL":
+		return "be"
+	case "BRA":
+		return "br"
+	case "CAN":
+		return "ca"
+	case "CIV":
+		return "ci"
+	case "COL":
+		return "co"
+	case "CPV":
+		return "cv"
+	case "CRC":
+		return "cr"
+	case "CRO":
+		return "hr"
+	case "CUW":
+		return "cw"
+	case "CZE":
+		return "cz"
+	case "DEN":
+		return "dk"
+	case "ECU":
+		return "ec"
+	case "EGY":
+		return "eg"
+	case "ENG":
+		return "gb-eng"
+	case "ESP":
+		return "es"
+	case "FRA":
+		return "fr"
+	case "GER":
+		return "de"
+	case "GHA":
+		return "gh"
+	case "HAI":
+		return "ht"
+	case "HON":
+		return "hn"
+	case "IRN":
+		return "ir"
+	case "ITA":
+		return "it"
+	case "JAM":
+		return "jm"
+	case "JOR":
+		return "jo"
+	case "JPN":
+		return "jp"
+	case "KOR":
+		return "kr"
+	case "MAR":
+		return "ma"
+	case "MEX":
+		return "mx"
+	case "NED":
+		return "nl"
+	case "NZL":
+		return "nz"
+	case "NOR":
+		return "no"
+	case "PAN":
+		return "pa"
+	case "PAR":
+		return "py"
+	case "PER":
+		return "pe"
+	case "POR":
+		return "pt"
+	case "QAT":
+		return "qa"
+	case "RSA":
+		return "za"
+	case "KSA":
+		return "sa"
+	case "SCO":
+		return "gb-sct"
+	case "SEN":
+		return "sn"
+	case "SRB":
+		return "rs"
+	case "SWE":
+		return "se"
+	case "SUI":
+		return "ch"
+	case "TUN":
+		return "tn"
+	case "TUR":
+		return "tr"
+	case "UKR":
+		return "ua"
+	case "UAE":
+		return "ae"
+	case "UZB":
+		return "uz"
+	case "URU":
+		return "uy"
+	case "USA":
+		return "us"
+	case "WAL":
+		return "gb-wls"
+	}
+	if code, ok := map[string]string{
+		"ALGERIA":       "dz",
+		"ARGENTINA":     "ar",
+		"AUSTRALIA":     "au",
+		"AUSTRIA":       "at",
+		"BELGIUM":       "be",
+		"BRAZIL":        "br",
+		"CANADA":        "ca",
+		"CAPE VERDE":    "cv",
+		"COLOMBIA":      "co",
+		"COSTA RICA":    "cr",
+		"CROATIA":       "hr",
+		"CURACAO":       "cw",
+		"CZECHIA":       "cz",
+		"DENMARK":       "dk",
+		"ECUADOR":       "ec",
+		"EGYPT":         "eg",
+		"ENGLAND":       "gb-eng",
+		"FRANCE":        "fr",
+		"GERMANY":       "de",
+		"GHANA":         "gh",
+		"HAITI":         "ht",
+		"HONDURAS":      "hn",
+		"IRAN":          "ir",
+		"ITALY":         "it",
+		"IVORY COAST":   "ci",
+		"JAMAICA":       "jm",
+		"JAPAN":         "jp",
+		"JORDAN":        "jo",
+		"MEXICO":        "mx",
+		"MOROCCO":       "ma",
+		"NETHERLANDS":   "nl",
+		"NEW ZEALAND":   "nz",
+		"NORWAY":        "no",
+		"PANAMA":        "pa",
+		"PARAGUAY":      "py",
+		"PORTUGAL":      "pt",
+		"QATAR":         "qa",
+		"SAUDI ARABIA":  "sa",
+		"SCOTLAND":      "gb-sct",
+		"SENEGAL":       "sn",
+		"SERBIA":        "rs",
+		"SOUTH AFRICA":  "za",
+		"SOUTH KOREA":   "kr",
+		"SPAIN":         "es",
+		"SWEDEN":        "se",
+		"SWITZERLAND":   "ch",
+		"TUNISIA":       "tn",
+		"TURKEY":        "tr",
+		"UKRAINE":       "ua",
+		"UNITED STATES": "us",
+		"URUGUAY":       "uy",
+		"UZBEKISTAN":    "uz",
+		"WALES":         "gb-wls",
+	}[key]; ok {
+		return code
 	}
 	return ""
 }

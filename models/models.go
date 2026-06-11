@@ -5,11 +5,12 @@ import "time"
 type Sport string
 
 const (
-	NFL Sport = "NFL"
-	MLB Sport = "MLB"
-	NBA Sport = "NBA"
-	NHL Sport = "NHL"
-	MLS Sport = "MLS"
+	NFL  Sport = "NFL"
+	MLB  Sport = "MLB"
+	NBA  Sport = "NBA"
+	NHL  Sport = "NHL"
+	MLS  Sport = "MLS"
+	FIFA Sport = "FIFA"
 )
 
 type Team struct {
@@ -90,14 +91,16 @@ type BaseballLineup struct {
 }
 
 type BaseballLineupEntry struct {
-	Order    int
-	Name     string
-	Position string
+	Order          int
+	Name           string
+	Position       string
+	BattingAverage string
 }
 
 type BaseballLineupPitcher struct {
 	Name       string
 	Handedness string
+	ERA        string
 }
 
 type BaseballProbablePitchers struct {
@@ -148,4 +151,60 @@ type VideoHighlight struct {
 	URL         string
 	Provider    string
 	PublishedAt time.Time
+}
+
+type WorldCup struct {
+	Live         []WorldCupMatch
+	Upcoming     []WorldCupMatch
+	Groups       []WorldCupGroup
+	Bracket      []WorldCupRound
+	LeftBracket  []WorldCupRound
+	RightBracket []WorldCupRound
+	Final        WorldCupMatch
+	Watch        []WorldCupWatch
+}
+
+type WorldCupMatch struct {
+	ID        string
+	Stage     string
+	HomeTeam  Team
+	AwayTeam  Team
+	HomeScore int
+	AwayScore int
+	Status    GameStatus
+	Period    string
+	TimeLeft  string
+	StartTime time.Time
+	Venue     string
+	City      string
+	Broadcast []string
+}
+
+type WorldCupGroup struct {
+	Name string
+	Rows []WorldCupStanding
+}
+
+type WorldCupStanding struct {
+	Team    Team
+	Played  string
+	Wins    string
+	Draws   string
+	Losses  string
+	For     string
+	Against string
+	Diff    string
+	Points  string
+	Note    string
+}
+
+type WorldCupRound struct {
+	Name    string
+	Matches []WorldCupMatch
+}
+
+type WorldCupWatch struct {
+	Label       string
+	Description string
+	Networks    []string
 }

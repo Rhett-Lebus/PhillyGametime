@@ -125,8 +125,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6438674-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6438674-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2858577-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2858577-04:00",
       "StopAfter": "2026-05-29T20:10:00Z"
     },
     "401815549": {
@@ -141,8 +141,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6917351-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6917351-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2842974-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2842974-04:00",
       "StopAfter": "2026-06-01T02:15:00Z"
     },
     "401815564": {
@@ -157,8 +157,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6538919-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6538919-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2811409-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2811409-04:00",
       "StopAfter": "2026-06-02T02:10:00Z"
     },
     "401815579": {
@@ -173,8 +173,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.657471-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.657471-04:00",
+      "CachedAt": "2026-06-10T16:29:22.291142-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.291142-04:00",
       "StopAfter": "2026-06-02T20:10:00Z"
     },
     "401815594": {
@@ -189,8 +189,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6380054-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6380054-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2946776-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2946776-04:00",
       "StopAfter": "2026-06-04T22:40:00Z"
     },
     "401815609": {
@@ -205,8 +205,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.7628555-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.7628555-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2963391-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2963391-04:00",
       "StopAfter": "2026-06-05T22:40:00Z"
     },
     "401815621": {
@@ -221,8 +221,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6607019-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6607019-04:00",
+      "CachedAt": "2026-06-10T16:29:22.3091678-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.3091678-04:00",
       "StopAfter": "2026-06-06T17:05:00Z"
     },
     "401815630": {
@@ -237,8 +237,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.7675583-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.7675583-04:00",
+      "CachedAt": "2026-06-10T16:29:22.4010241-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.4010241-04:00",
       "StopAfter": "2026-06-07T22:40:00Z"
     },
     "401815645": {
@@ -253,8 +253,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6666676-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6666676-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2968597-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2968597-04:00",
       "StopAfter": "2026-06-08T20:05:00Z"
     },
     "401815660": {
@@ -269,8 +269,8 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6422397-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6422397-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2874193-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2874193-04:00",
       "StopAfter": "2026-06-09T17:35:00Z"
     },
     "401815675": {
@@ -285,9 +285,41 @@
         }
       ],
       "Pending": false,
-      "CachedAt": "2026-06-09T16:00:44.6238331-04:00",
-      "NextFetchAt": "2026-06-10T16:00:44.6238331-04:00",
+      "CachedAt": "2026-06-10T16:29:22.2900643-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2900643-04:00",
       "StopAfter": "2026-06-10T23:07:00Z"
+    },
+    "401815686": {
+      "Highlights": [
+        {
+          "Title": "Condensed Game: PHI@TOR - 6/9/26",
+          "Description": "Condensed Game: Zack Wheeler and the Phillies take on Dylan Cease and the Blue Jays on June 9, 2026",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/pzxz6kmnndvz054n8bwp.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/09/159514e4-4fc3ca91-75fad28d-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Provider": "MLB",
+          "PublishedAt": "2026-06-10T02:49:13.735Z"
+        }
+      ],
+      "Pending": false,
+      "CachedAt": "2026-06-10T16:29:22.2793616-04:00",
+      "NextFetchAt": "2026-06-11T16:29:22.2793616-04:00",
+      "StopAfter": "2026-06-11T23:07:00Z"
+    },
+    "401815701": {
+      "Highlights": [
+        {
+          "Title": "Home runs back Luzardo in Phillies' 7-4 win",
+          "Description": "Bryce Harper, Alec Bohm and Kyle Schwarber homer to back Jesús Luzardo, who strikes out eight in the Phillies' 7-4 win vs. the Blue Jays",
+          "Thumbnail": "https://img.mlbstatic.com/mlb-images/image/upload/w_1920,h_810,f_jpg,c_fill,g_auto/mlb/xrgtbjvtbmrtrmamh7us.jpg",
+          "URL": "https://mlb-cuts-diamond.mlb.com/FORGE/2026/2026-06/10/d3bbb12c-e1170398-234f4475-csvm-diamondgcp-asset_1280x720_59_4000K.mp4",
+          "Provider": "MLB",
+          "PublishedAt": "2026-06-11T05:25:00Z"
+        }
+      ],
+      "Pending": false,
+      "CachedAt": "2026-06-11T15:56:39.5687845-04:00",
+      "NextFetchAt": "2026-06-12T15:56:39.5687845-04:00",
+      "StopAfter": "2026-06-12T23:07:00Z"
     },
     "761657": {
       "Highlights": [

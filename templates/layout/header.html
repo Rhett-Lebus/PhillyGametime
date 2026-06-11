@@ -8,6 +8,13 @@
       <span class="logo-text">PHILLY <strong>GAMETIME</strong></span>
     </a>
 
+    <a href="/world-cup" class="world-cup-promo {{if eq .NavActive "world-cup"}}active{{end}}" aria-label="World Cup special">
+      <span class="world-cup-promo__icon" aria-hidden="true">
+        <img src="https://a.espncdn.com/i/leaguelogos/soccer/500/4.png" alt="">
+      </span>
+      <span class="world-cup-promo__label" aria-hidden="true">World Cup</span>
+    </a>
+
     <nav class="main-nav" aria-label="Primary">
       <a href="/" class="nav-link {{if eq .NavActive "home"}}active{{end}}">Home</a>
       <a href="/scores" class="nav-link {{if eq .NavActive "scores"}}active{{end}}">Live Scores</a>

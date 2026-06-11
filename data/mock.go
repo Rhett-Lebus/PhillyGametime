@@ -366,6 +366,152 @@ func (s *MockStore) GetGameByID(id string) (*models.Game, bool) {
 	return nil, false
 }
 
+func (s *MockStore) GetWorldCup() models.WorldCup {
+	wc := func(name, abbr, color string) models.Team {
+		team := worldCupTeam("", name, abbr, color, "")
+		team.LogoURL = worldCupFlagLogoURL(team)
+		return team
+	}
+	germany := wc("Germany", "GER", "#000000")
+	australia := wc("Australia", "AUS", "#ffcd00")
+	france := wc("France", "FRA", "#1d4ed8")
+	egypt := wc("Egypt", "EGY", "#ce1126")
+	denmark := wc("Denmark", "DEN", "#c60c30")
+	netherlands := wc("Netherlands", "NED", "#f36c21")
+	morocco := wc("Morocco", "MAR", "#c1272d")
+	colombia := wc("Colombia", "COL", "#fcd116")
+	croatia := wc("Croatia", "CRO", "#171796")
+	spain := wc("Spain", "ESP", "#aa151b")
+	austria := wc("Austria", "AUT", "#ed2939")
+	usa := wc("USA", "USA", "#3c3b6e")
+	belgium := wc("Belgium", "BEL", "#fae042")
+	brazil := wc("Brazil", "BRA", "#009b3a")
+	japan := wc("Japan", "JPN", "#bc002d")
+	ecuador := wc("Ecuador", "ECU", "#ffdd00")
+	senegal := wc("Senegal", "SEN", "#00853f")
+	ukraine := wc("Ukraine", "UKR", "#0057b7")
+	england := wc("England", "ENG", "#ce1124")
+	norway := wc("Norway", "NOR", "#ba0c2f")
+	argentina := wc("Argentina", "ARG", "#75aadb")
+	uruguay := wc("Uruguay", "URU", "#0038a8")
+	turkey := wc("Turkey", "TUR", "#e30a17")
+	iran := wc("Iran", "IRN", "#239f40")
+	italy := wc("Italy", "ITA", "#008c45")
+	algeria := wc("Algeria", "ALG", "#006233")
+	portugal := wc("Portugal", "POR", "#006600")
+	panama := wc("Panama", "PAN", "#005293")
+	mexico := wc("Mexico", "MEX", "#006847")
+	mexico.ID = "203"
+	southAfrica := wc("South Africa", "RSA", "#087d5a")
+	southAfrica.ID = "467"
+	southKorea := wc("South Korea", "KOR", "#ce2028")
+	southKorea.ID = "451"
+	czechia := wc("Czechia", "CZE", "#d7141a")
+	czechia.ID = "450"
+	canada := wc("Canada", "CAN", "#d52b1e")
+	canada.ID = "206"
+	switzerland := wc("Switzerland", "SUI", "#ff0000")
+	switzerland.ID = "475"
+
+	now := NowPhilly()
+	mockMatch := func(id, stage string, home, away models.Team, homeScore, awayScore int) models.WorldCupMatch {
+		return models.WorldCupMatch{
+			ID: id, Stage: stage, HomeTeam: home, AwayTeam: away,
+			HomeScore: homeScore, AwayScore: awayScore, Status: models.StatusFinal,
+			StartTime: DatePhilly(now.Year(), time.July, 19, 15, 0, 0),
+			Venue:     "Mock Stadium", Broadcast: []string{"FOX"},
+		}
+	}
+	cup := models.WorldCup{
+		Live: []models.WorldCupMatch{
+			{
+				ID: "mock-wc-live", Stage: "Group Stage", HomeTeam: mexico, AwayTeam: southAfrica,
+				HomeScore: 1, AwayScore: 0, Status: models.StatusLive, Period: "1st Half", TimeLeft: "34'",
+				StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 15, 0, 0),
+				Venue:     "Estadio Banorte", City: "Mexico City", Broadcast: []string{"FOX", "Tele", "Peacock"},
+			},
+		},
+		Upcoming: []models.WorldCupMatch{
+			{
+				ID: "mock-wc-upcoming-1", Stage: "Group Stage", HomeTeam: southKorea, AwayTeam: czechia,
+				Status: models.StatusScheduled, StartTime: now.AddDate(0, 0, 1),
+				Venue: "Estadio Akron", City: "Guadalajara", Broadcast: []string{"FS1", "Tele", "Peacock"},
+			},
+			{
+				ID: "mock-wc-upcoming-2", Stage: "Group Stage", HomeTeam: canada, AwayTeam: switzerland,
+				Status: models.StatusScheduled, StartTime: now.AddDate(0, 0, 2),
+				Venue: "BMO Field", City: "Toronto", Broadcast: []string{"FOX", "Tele"},
+			},
+		},
+		Groups: []models.WorldCupGroup{
+			{Name: "Group A", Rows: []models.WorldCupStanding{
+				{Team: mexico, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
+				{Team: southAfrica, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
+				{Team: southKorea, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Best 8 advance"},
+				{Team: czechia, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Eliminated"},
+			}},
+			{Name: "Group B", Rows: []models.WorldCupStanding{
+				{Team: canada, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
+				{Team: switzerland, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Best 8 advance"},
+			}},
+		},
+		Bracket: []models.WorldCupRound{
+			{Name: "Round of 32", Matches: []models.WorldCupMatch{
+				mockMatch("mock-r32-1", "Round of 32", germany, australia, 2, 0),
+				mockMatch("mock-r32-2", "Round of 32", france, egypt, 3, 1),
+				mockMatch("mock-r32-3", "Round of 32", denmark, switzerland, 1, 2),
+				mockMatch("mock-r32-4", "Round of 32", netherlands, morocco, 2, 1),
+				mockMatch("mock-r32-5", "Round of 32", colombia, croatia, 1, 2),
+				mockMatch("mock-r32-6", "Round of 32", spain, austria, 2, 0),
+				mockMatch("mock-r32-7", "Round of 32", usa, canada, 2, 1),
+				mockMatch("mock-r32-8", "Round of 32", belgium, southKorea, 1, 0),
+				mockMatch("mock-r32-9", "Round of 32", brazil, japan, 3, 1),
+				mockMatch("mock-r32-10", "Round of 32", ecuador, senegal, 0, 1),
+				mockMatch("mock-r32-11", "Round of 32", mexico, ukraine, 2, 1),
+				mockMatch("mock-r32-12", "Round of 32", england, norway, 2, 0),
+				mockMatch("mock-r32-13", "Round of 32", argentina, uruguay, 2, 1),
+				mockMatch("mock-r32-14", "Round of 32", turkey, iran, 1, 0),
+				mockMatch("mock-r32-15", "Round of 32", italy, algeria, 1, 2),
+				mockMatch("mock-r32-16", "Round of 32", portugal, panama, 3, 0),
+			}},
+			{Name: "Round of 16", Matches: []models.WorldCupMatch{
+				mockMatch("mock-r16-1", "Round of 16", germany, france, 1, 2),
+				mockMatch("mock-r16-2", "Round of 16", switzerland, netherlands, 1, 2),
+				mockMatch("mock-r16-3", "Round of 16", croatia, spain, 1, 3),
+				mockMatch("mock-r16-4", "Round of 16", usa, belgium, 2, 1),
+				mockMatch("mock-r16-5", "Round of 16", brazil, senegal, 2, 0),
+				mockMatch("mock-r16-6", "Round of 16", mexico, england, 1, 2),
+				mockMatch("mock-r16-7", "Round of 16", argentina, turkey, 3, 1),
+				mockMatch("mock-r16-8", "Round of 16", algeria, portugal, 0, 2),
+			}},
+			{Name: "Quarterfinals", Matches: []models.WorldCupMatch{
+				mockMatch("mock-qf-1", "Quarterfinals", france, netherlands, 2, 1),
+				mockMatch("mock-qf-2", "Quarterfinals", spain, usa, 2, 0),
+				mockMatch("mock-qf-3", "Quarterfinals", brazil, england, 1, 2),
+				mockMatch("mock-qf-4", "Quarterfinals", argentina, portugal, 2, 1),
+			}},
+			{Name: "Semifinals", Matches: []models.WorldCupMatch{
+				mockMatch("mock-sf-1", "Semifinals", france, spain, 1, 2),
+				mockMatch("mock-sf-2", "Semifinals", england, argentina, 1, 2),
+			}},
+			{Name: "Final", Matches: []models.WorldCupMatch{
+				mockMatch("mock-final", "Final", spain, argentina, 2, 1),
+			}},
+		},
+		Watch: []models.WorldCupWatch{
+			{Label: "English TV", Description: "National match windows on FOX or FS1.", Networks: []string{"FOX", "FS1"}},
+			{Label: "Spanish TV", Description: "Spanish-language coverage listed by ESPN as Tele.", Networks: []string{"Tele"}},
+			{Label: "Streaming", Description: "Streaming availability appears on match cards when listed.", Networks: []string{"Peacock"}},
+		},
+	}
+	applyWorldCupBracketLayout(&cup)
+	return cup
+}
+
+func worldCupTeam(id, name, abbr, color, logo string) models.Team {
+	return models.Team{ID: id, Name: name, City: name, Abbr: abbr, Sport: models.FIFA, Primary: color, Secondary: "#ffffff", LogoURL: logo}
+}
+
 func (s *MockStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 	game, ok := s.GetGameByID(id)
 	if !ok || game.Sport != models.MLB || game.Lineup == nil {
@@ -378,29 +524,29 @@ func philliesMetsLineup() *models.BaseballLineup {
 	return &models.BaseballLineup{
 		AwayTeam:    Mets,
 		HomeTeam:    Phillies,
-		AwayPitcher: models.BaseballLineupPitcher{Name: "Kodai Senga", Handedness: "R"},
-		HomePitcher: models.BaseballLineupPitcher{Name: "Cristopher Sanchez", Handedness: "L"},
+		AwayPitcher: models.BaseballLineupPitcher{Name: "Kodai Senga", Handedness: "R", ERA: "3.02"},
+		HomePitcher: models.BaseballLineupPitcher{Name: "Cristopher Sanchez", Handedness: "L", ERA: "3.32"},
 		Away: []models.BaseballLineupEntry{
-			{Order: 1, Name: "Francisco Lindor", Position: "SS"},
-			{Order: 2, Name: "Brandon Nimmo", Position: "CF"},
-			{Order: 3, Name: "Pete Alonso", Position: "1B"},
-			{Order: 4, Name: "Juan Soto", Position: "RF"},
-			{Order: 5, Name: "Mark Vientos", Position: "3B"},
-			{Order: 6, Name: "Jeff McNeil", Position: "2B"},
-			{Order: 7, Name: "Starling Marte", Position: "LF"},
-			{Order: 8, Name: "Luis Torrens", Position: "C"},
-			{Order: 9, Name: "Kodai Senga", Position: "P"},
+			{Order: 1, Name: "Francisco Lindor", Position: "SS", BattingAverage: ".271"},
+			{Order: 2, Name: "Brandon Nimmo", Position: "CF", BattingAverage: ".224"},
+			{Order: 3, Name: "Pete Alonso", Position: "1B", BattingAverage: ".266"},
+			{Order: 4, Name: "Juan Soto", Position: "RF", BattingAverage: ".251"},
+			{Order: 5, Name: "Mark Vientos", Position: "3B", BattingAverage: ".243"},
+			{Order: 6, Name: "Jeff McNeil", Position: "2B", BattingAverage: ".237"},
+			{Order: 7, Name: "Starling Marte", Position: "LF", BattingAverage: ".270"},
+			{Order: 8, Name: "Luis Torrens", Position: "C", BattingAverage: ".229"},
+			{Order: 9, Name: "Kodai Senga", Position: "P", BattingAverage: ".000"},
 		},
 		Home: []models.BaseballLineupEntry{
-			{Order: 1, Name: "Trea Turner", Position: "SS"},
-			{Order: 2, Name: "Kyle Schwarber", Position: "DH"},
-			{Order: 3, Name: "Bryce Harper", Position: "1B"},
-			{Order: 4, Name: "Alec Bohm", Position: "3B"},
-			{Order: 5, Name: "Nick Castellanos", Position: "RF"},
-			{Order: 6, Name: "Brandon Marsh", Position: "LF"},
-			{Order: 7, Name: "J.T. Realmuto", Position: "C"},
-			{Order: 8, Name: "Bryson Stott", Position: "2B"},
-			{Order: 9, Name: "Cristopher Sanchez", Position: "P"},
+			{Order: 1, Name: "Trea Turner", Position: "SS", BattingAverage: ".289"},
+			{Order: 2, Name: "Kyle Schwarber", Position: "DH", BattingAverage: ".248"},
+			{Order: 3, Name: "Bryce Harper", Position: "1B", BattingAverage: ".276"},
+			{Order: 4, Name: "Alec Bohm", Position: "3B", BattingAverage: ".280"},
+			{Order: 5, Name: "Nick Castellanos", Position: "RF", BattingAverage: ".254"},
+			{Order: 6, Name: "Brandon Marsh", Position: "LF", BattingAverage: ".249"},
+			{Order: 7, Name: "J.T. Realmuto", Position: "C", BattingAverage: ".266"},
+			{Order: 8, Name: "Bryson Stott", Position: "2B", BattingAverage: ".257"},
+			{Order: 9, Name: "Cristopher Sanchez", Position: "P", BattingAverage: ".000"},
 		},
 	}
 }

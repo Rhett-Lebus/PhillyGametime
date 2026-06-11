@@ -1,0 +1,223 @@
+{{define "content"}}
+<section class="world-cup-hero">
+  <div class="world-cup-hero__content">
+    <p class="eyebrow">Tournament special</p>
+    <h1>World Cup Match Center</h1>
+    <p>Live scores, group tables, knockout bracket, upcoming fixtures, and TV / streaming windows in one place.</p>
+    <button type="button" class="world-cup-bracket-open" data-world-cup-bracket-open>View Bracket</button>
+  </div>
+  <div class="world-cup-hero__badge" aria-hidden="true">
+    <span>2026</span>
+    <strong>FIFA World Cup</strong>
+  </div>
+</section>
+
+<div class="world-cup-bracket-modal" data-world-cup-bracket-modal hidden>
+  <div class="world-cup-bracket-modal__backdrop" data-world-cup-bracket-close></div>
+  <section class="world-cup-bracket-modal__panel" role="dialog" aria-modal="true" aria-labelledby="world-cup-bracket-title">
+    <header class="world-cup-bracket-modal__header">
+      <div>
+        <p class="eyebrow">Tournament bracket</p>
+        <h2 id="world-cup-bracket-title">World Cup Bracket</h2>
+      </div>
+      <button type="button" class="world-cup-bracket-modal__close" data-world-cup-bracket-close aria-label="Close bracket">&times;</button>
+    </header>
+    <div class="world-cup-bracket-modal__scroller">
+      <div class="world-cup-bracket world-cup-bracket--split">
+    {{if .Cup.LeftBracket}}
+        <div class="world-cup-bracket-side world-cup-bracket-side--left">
+          {{range .Cup.LeftBracket}}
+          <article class="world-cup-round">
+            <h3>{{.Name}}</h3>
+            {{range .Matches}}{{template "world_cup_bracket_match" .}}{{end}}
+          </article>
+          {{end}}
+        </div>
+        <div class="world-cup-bracket-final">
+          <p class="eyebrow">Final</p>
+          {{if .Cup.Final.ID}}
+            {{template "world_cup_bracket_match" .Cup.Final}}
+          {{else}}
+            <div class="world-cup-bracket-trophy">
+              <span>Final</span>
+              <strong>TBD</strong>
+            </div>
+          {{end}}
+        </div>
+        <div class="world-cup-bracket-side world-cup-bracket-side--right">
+          {{range .Cup.RightBracket}}
+          <article class="world-cup-round">
+            <h3>{{.Name}}</h3>
+            {{range .Matches}}{{template "world_cup_bracket_match" .}}{{end}}
+          </article>
+          {{end}}
+        </div>
+    {{else}}
+        <p class="world-cup-empty">Bracket fixtures will fill in as knockout matchups are set.</p>
+    {{end}}
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="world-cup-tabs" data-world-cup-tabs>
+  <div class="world-cup-tablist" role="tablist" aria-label="World Cup sections">
+    <button type="button" class="world-cup-tab active" id="world-cup-tab-live" role="tab" aria-selected="true" aria-controls="world-cup-panel-live" data-world-cup-tab="live">Live</button>
+    <button type="button" class="world-cup-tab" id="world-cup-tab-upcoming" role="tab" aria-selected="false" aria-controls="world-cup-panel-upcoming" data-world-cup-tab="upcoming">Upcoming</button>
+    <button type="button" class="world-cup-tab" id="world-cup-tab-standings" role="tab" aria-selected="false" aria-controls="world-cup-panel-standings" data-world-cup-tab="standings">Standings</button>
+    <button type="button" class="world-cup-tab" id="world-cup-tab-watch" role="tab" aria-selected="false" aria-controls="world-cup-panel-watch" data-world-cup-tab="watch">Watch</button>
+  </div>
+
+  <section class="world-cup-panel world-cup-panel--live world-cup-tab-panel active" id="world-cup-panel-live" role="tabpanel" aria-labelledby="world-cup-tab-live" data-world-cup-panel="live">
+    <div class="world-cup-panel__head">
+      <div>
+        <p class="eyebrow">Now</p>
+        <h2>Live Scores</h2>
+      </div>
+    </div>
+    <div class="world-cup-match-list world-cup-match-list--dense">
+      {{range .Cup.Live}}
+        {{template "world_cup_match" .}}
+      {{else}}
+        <p class="world-cup-empty">No World Cup matches are live right now.</p>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-upcoming" role="tabpanel" aria-labelledby="world-cup-tab-upcoming" data-world-cup-panel="upcoming" hidden>
+    <div class="world-cup-panel__head">
+      <div>
+        <p class="eyebrow">Next up</p>
+        <h2>Upcoming Games</h2>
+      </div>
+    </div>
+    <div class="world-cup-match-list world-cup-match-list--compact world-cup-match-list--dense">
+      {{range .Cup.Upcoming}}
+        {{template "world_cup_match" .}}
+      {{else}}
+        <p class="world-cup-empty">No upcoming World Cup matches are listed yet.</p>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-standings" role="tabpanel" aria-labelledby="world-cup-tab-standings" data-world-cup-panel="standings" hidden>
+    <div class="world-cup-panel__head">
+      <div>
+        <p class="eyebrow">Group stage</p>
+        <h2>Standings</h2>
+      </div>
+    </div>
+    <div class="world-cup-groups">
+      {{range .Cup.Groups}}
+      <article class="world-cup-group">
+        <h3>{{.Name}}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>GP</th>
+              <th>W</th>
+              <th>D</th>
+              <th>L</th>
+              <th>GD</th>
+              <th>Pts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Rows}}
+            <tr>
+              <td>
+                <span class="world-cup-team-cell">
+                  {{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="">{{end}}
+                  <strong>{{.Team.Name}}</strong>
+                </span>
+              </td>
+              <td>{{.Played}}</td>
+              <td>{{.Wins}}</td>
+              <td>{{.Draws}}</td>
+              <td>{{.Losses}}</td>
+              <td>{{.Diff}}</td>
+              <td><strong>{{.Points}}</strong></td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </article>
+      {{else}}
+        <p class="world-cup-empty">Group standings are not available yet.</p>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-watch" role="tabpanel" aria-labelledby="world-cup-tab-watch" data-world-cup-panel="watch" hidden>
+    <div class="world-cup-panel__head">
+      <div>
+        <p class="eyebrow">Broadcasts</p>
+        <h2>How to Watch</h2>
+      </div>
+    </div>
+    <div class="world-cup-watch">
+      {{range .Cup.Watch}}
+      <article>
+        <h3>{{.Label}}</h3>
+        <p>{{.Description}}</p>
+        <div>
+          {{range .Networks}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
+        </div>
+      </article>
+      {{end}}
+    </div>
+  </section>
+</section>
+{{end}}
+
+{{define "world_cup_bracket_match"}}
+<div class="world-cup-bracket-match {{if eq .Status "Final"}}world-cup-bracket-match--final{{end}} {{if eq .Status "Live"}}world-cup-bracket-match--live{{end}}" data-world-cup-match="{{.ID}}">
+  <div class="world-cup-bracket-match__meta">
+    <span data-world-cup-status>{{if eq .Status "Scheduled"}}{{formatShortDate .StartTime}} {{formatTime .StartTime}}{{else}}{{.Status}}{{end}}</span>
+    {{if .Broadcast}}<small>{{index .Broadcast 0}}</small>{{end}}
+  </div>
+  <div class="world-cup-bracket-team {{if and (eq .Status "Final") (gt .AwayScore .HomeScore)}}world-cup-bracket-team--winner{{end}}" data-world-cup-side="away">
+    {{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="">{{end}}
+    <span>{{.AwayTeam.Name}}</span>
+    <strong data-world-cup-score="away" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.AwayScore}}</strong>
+  </div>
+  <div class="world-cup-bracket-team {{if and (eq .Status "Final") (gt .HomeScore .AwayScore)}}world-cup-bracket-team--winner{{end}}" data-world-cup-side="home">
+    {{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="">{{end}}
+    <span>{{.HomeTeam.Name}}</span>
+    <strong data-world-cup-score="home" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.HomeScore}}</strong>
+  </div>
+  {{if .Venue}}<small class="world-cup-bracket-match__venue">{{.Venue}}</small>{{end}}
+</div>
+{{end}}
+
+{{define "world_cup_match"}}
+<article class="world-cup-match {{if eq .Status "Live"}}world-cup-match--live{{end}}" data-world-cup-match="{{.ID}}" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+  <div class="world-cup-match__meta">
+    <span>{{.Stage}}</span>
+    <strong data-world-cup-status>{{if eq .Status "Live"}}Live{{else}}{{formatDateTime .StartTime}}{{end}}</strong>
+  </div>
+  <div class="world-cup-match__teams">
+    <div data-world-cup-side="away">
+      <span class="world-cup-flag" aria-hidden="true">
+        {{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="">{{else}}{{.AwayTeam.Abbr}}{{end}}
+      </span>
+      <span>{{.AwayTeam.Name}}</span>
+      <strong data-world-cup-score="away" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.AwayScore}}</strong>
+    </div>
+    <div data-world-cup-side="home">
+      <span class="world-cup-flag" aria-hidden="true">
+        {{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="">{{else}}{{.HomeTeam.Abbr}}{{end}}
+      </span>
+      <span>{{.HomeTeam.Name}}</span>
+      <strong data-world-cup-score="home" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.HomeScore}}</strong>
+    </div>
+  </div>
+  <div class="world-cup-match__foot">
+    <span>{{if .Venue}}{{.Venue}}{{if .City}}, {{.City}}{{end}}{{else}}{{.City}}{{end}}</span>
+    <div>
+      {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
+    </div>
+  </div>
+</article>
+{{end}}

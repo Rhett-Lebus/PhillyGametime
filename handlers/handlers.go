@@ -240,6 +240,9 @@ func (h *Handler) withLayout(data interface{}) interface{} {
 	case TVData:
 		v.ShowThemePicker = h.showThemePicker
 		return v
+	case WorldCupData:
+		v.ShowThemePicker = h.showThemePicker
+		return v
 	default:
 		return data
 	}
@@ -349,6 +352,13 @@ type TVData struct {
 	NavActive string
 	Title     string
 	Games     []models.Game
+}
+
+type WorldCupData struct {
+	LayoutData
+	NavActive string
+	Title     string
+	Cup       models.WorldCup
 }
 
 func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
@@ -753,12 +763,24 @@ func (h *Handler) TV(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) WorldCup(w http.ResponseWriter, r *http.Request) {
+	h.render(w, "world_cup", WorldCupData{
+		NavActive: "world-cup",
+		Title:     "World Cup",
+		Cup:       h.store.GetWorldCup(),
+	})
+}
+
 func (h *Handler) APIScores(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.store.GetTodaysGames())
 }
 
 func (h *Handler) APIUpcoming(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.store.GetUpcomingGames())
+}
+
+func (h *Handler) APIWorldCup(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, h.store.GetWorldCup())
 }
 
 func (h *Handler) APIGameLineup(w http.ResponseWriter, r *http.Request) {

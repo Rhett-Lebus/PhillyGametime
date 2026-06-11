@@ -1564,21 +1564,141 @@ func TestMLBPitcherStrikeoutsUsesLiveFeedBoxscore(t *testing.T) {
 	feed.LiveData.Boxscore.Teams.Away.Players = map[string]mlbBoxscorePlayer{
 		"ID123": {
 			Person: mlbPerson{ID: 123, FullName: "Ranger Suarez"},
-			Stats: struct {
-				Pitching struct {
-					StrikeOuts *int `json:"strikeOuts"`
-				} `json:"pitching"`
-			}{
-				Pitching: struct {
-					StrikeOuts *int `json:"strikeOuts"`
-				}{StrikeOuts: &k},
-			},
+			Stats: mlbBoxscorePlayerStats{Pitching: struct {
+				ERA        string `json:"era"`
+				StrikeOuts *int   `json:"strikeOuts"`
+			}{StrikeOuts: &k}},
 		},
 	}
 
 	got := mlbPitcherStrikeouts(feed, mlbPerson{ID: 123, FullName: "Ranger Suarez"})
 	if got != "4" {
 		t.Fatalf("mlbPitcherStrikeouts() = %q, want 4", got)
+	}
+}
+
+func TestMLBLineupFromFeedIncludesSeasonStats(t *testing.T) {
+	feed := mlbLiveFeedResp{}
+	feed.LiveData.Boxscore.Teams.Away.BattingOrder = []int{11}
+	feed.LiveData.Boxscore.Teams.Away.Pitchers = []int{22}
+	feed.LiveData.Boxscore.Teams.Away.Players = map[string]mlbBoxscorePlayer{
+		"ID11": {
+			Person:       mlbPerson{ID: 11, FullName: "Trea Turner"},
+			BattingOrder: "100",
+			Position: struct {
+				Abbreviation string `json:"abbreviation"`
+				Name         string `json:"name"`
+			}{Abbreviation: "SS"},
+			SeasonStats: mlbBoxscorePlayerStats{Batting: struct {
+				Avg string `json:"avg"`
+			}{Avg: ".289"}},
+		},
+		"ID22": {
+			Person: mlbPerson{ID: 22, FullName: "Zack Wheeler"},
+			PitchHand: struct {
+				Code        string `json:"code"`
+				Description string `json:"description"`
+			}{Code: "R"},
+			Position: struct {
+				Abbreviation string `json:"abbreviation"`
+				Name         string `json:"name"`
+			}{Abbreviation: "P"},
+			SeasonStats: mlbBoxscorePlayerStats{Pitching: struct {
+				ERA        string `json:"era"`
+				StrikeOuts *int   `json:"strikeOuts"`
+			}{ERA: "2.86"}},
+		},
+	}
+
+	got := mlbLineupFromFeed(feed, models.Game{})
+	if got == nil || len(got.Away) != 1 {
+		t.Fatalf("mlbLineupFromFeed() lineup = %#v, want away lineup", got)
+	}
+	if got.Away[0].BattingAverage != ".289" {
+		t.Fatalf("BattingAverage = %q, want .289", got.Away[0].BattingAverage)
+	}
+	if got.AwayPitcher.ERA != "2.86" {
+		t.Fatalf("AwayPitcher.ERA = %q, want 2.86", got.AwayPitcher.ERA)
+	}
+}
+
+func TestHasCompleteLineupEntriesRequiresBothTeams(t *testing.T) {
+	partial := &models.BaseballLineup{
+		Home: []models.BaseballLineupEntry{{Name: "Trea Turner"}},
+	}
+	if !hasLineupEntries(partial) {
+		t.Fatal("hasLineupEntries() = false, want true for partial lineup")
+	}
+	if hasCompleteLineupEntries(partial) {
+		t.Fatal("hasCompleteLineupEntries() = true, want false for one-sided lineup")
+	}
+
+	complete := &models.BaseballLineup{
+		Away: []models.BaseballLineupEntry{{Name: "Francisco Lindor"}},
+		Home: []models.BaseballLineupEntry{{Name: "Trea Turner"}},
+	}
+	if !hasCompleteLineupEntries(complete) {
+		t.Fatal("hasCompleteLineupEntries() = false, want true when both teams have lineups")
+	}
+}
+
+func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
+	tests := []struct {
+		name string
+		team models.Team
+		want string
+	}{
+		{name: "Curacao abbr", team: models.Team{Abbr: "CUW", Name: "Curaçao"}, want: "https://flagcdn.com/w80/cw.png"},
+		{name: "Ivory Coast abbr", team: models.Team{Abbr: "CIV", Name: "Ivory Coast"}, want: "https://flagcdn.com/w80/ci.png"},
+		{name: "Cape Verde abbr", team: models.Team{Abbr: "CPV", Name: "Cape Verde"}, want: "https://flagcdn.com/w80/cv.png"},
+		{name: "Tunisia abbr", team: models.Team{Abbr: "TUN", Name: "Tunisia"}, want: "https://flagcdn.com/w80/tn.png"},
+		{name: "Sweden abbr", team: models.Team{Abbr: "SWE", Name: "Sweden"}, want: "https://flagcdn.com/w80/se.png"},
+		{name: "name fallback", team: models.Team{Name: "Curaçao"}, want: "https://flagcdn.com/w80/cw.png"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := worldCupFlagLogoURL(tt.team); got != tt.want {
+				t.Fatalf("worldCupFlagLogoURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestESPNGameStatusUsesStateAndSoccerDetails(t *testing.T) {
+	tests := []struct {
+		name   string
+		status espnStatus
+		want   models.GameStatus
+	}{
+		{name: "state in", status: espnStatus{Type: espnStatusType{State: "in", Name: "STATUS_FIRST_HALF"}}, want: models.StatusLive},
+		{name: "first half detail", status: espnStatus{Type: espnStatusType{Name: "STATUS_PERIOD", ShortDetail: "1st Half"}}, want: models.StatusLive},
+		{name: "completed", status: espnStatus{Type: espnStatusType{Completed: true, Name: "STATUS_FULL_TIME"}}, want: models.StatusFinal},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := espnGameStatus(tt.status); got != tt.want {
+				t.Fatalf("espnGameStatus() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasWorldCupMatchNearLiveWindow(t *testing.T) {
+	now := DatePhilly(2026, time.June, 11, 15, 30, 0)
+	matches := []models.WorldCupMatch{
+		{StartTime: DatePhilly(2026, time.June, 11, 15, 0, 0)},
+	}
+	if !hasWorldCupMatchNearLiveWindow(matches, now) {
+		t.Fatal("hasWorldCupMatchNearLiveWindow() = false, want true for in-window match")
+	}
+
+	matches = []models.WorldCupMatch{
+		{StartTime: DatePhilly(2026, time.June, 12, 15, 0, 0)},
+	}
+	if hasWorldCupMatchNearLiveWindow(matches, now) {
+		t.Fatal("hasWorldCupMatchNearLiveWindow() = true, want false for tomorrow's match")
 	}
 }
 

@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +56,37 @@ func TestShouldShowThemePickerOnDefaultLocalPort(t *testing.T) {
 
 	if !shouldShowThemePicker() {
 		t.Fatal("shouldShowThemePicker() = false, want true with default local port")
+	}
+}
+
+func TestWorldCupPageRenders(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(".."); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/world-cup", nil)
+	rec := httptest.NewRecorder()
+
+	h.WorldCup(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("WorldCup() status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"World Cup Match Center", "Live Scores", "How to Watch"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("WorldCup() body missing %q", want)
+		}
 	}
 }
 

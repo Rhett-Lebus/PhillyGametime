@@ -36,9 +36,11 @@ func main() {
 	mux.HandleFunc("GET /teams/{id}", h.TeamDetail)
 	mux.HandleFunc("GET /stats", h.Stats)
 	mux.HandleFunc("GET /tv", h.TV)
+	mux.HandleFunc("GET /world-cup", h.WorldCup)
 
 	mux.HandleFunc("GET /api/scores", h.APIScores)
 	mux.HandleFunc("GET /api/upcoming", h.APIUpcoming)
+	mux.HandleFunc("GET /api/world-cup", h.APIWorldCup)
 	mux.HandleFunc("GET /api/games/{id}/lineup", h.APIGameLineup)
 	mux.HandleFunc("GET /api/standings", h.APIStandings)
 	mux.HandleFunc("GET /events", h.SSE)

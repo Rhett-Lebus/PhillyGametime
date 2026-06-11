@@ -13,4 +13,5 @@ type Store interface {
 	GetRecentResults() []models.RecentResult
 	GetTeams() []models.Team
 	GetGameByID(id string) (*models.Game, bool)
+	GetWorldCup() models.WorldCup
 }

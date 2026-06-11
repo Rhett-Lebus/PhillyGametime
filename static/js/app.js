@@ -4,6 +4,7 @@
   const POLL_INTERVAL = 30000;
   const THEME_KEY = 'phillyGametimeTheme';
   const DEFAULT_THEME = 'neon';
+  const LINEUP_PARTIAL_TTL = 2 * 60 * 1000;
   const lineupCache = new Map();
 
   function getStoredTheme() {
@@ -459,15 +460,37 @@
 
   function rememberGameLineup(game) {
     if (!game || !game.ID || !game.Lineup) return;
-    lineupCache.set(game.ID, { Available: true, Lineup: game.Lineup });
+    lineupCache.set(game.ID, lineupCacheEntry({ Available: true, Lineup: game.Lineup }));
     markLineupPosted(game.ID);
   }
 
   function markLineupPosted(gameID) {
     document.querySelectorAll(`[data-lineup-game="${gameID}"]`).forEach((button) => {
       button.classList.add('lineup-button--ready');
-      button.textContent = 'Lineup Posted';
+      button.textContent = 'View Lineup';
     });
+  }
+
+  function hasCompleteLineup(lineup) {
+    return Boolean(lineup && Array.isArray(lineup.Away) && lineup.Away.length && Array.isArray(lineup.Home) && lineup.Home.length);
+  }
+
+  function lineupCacheEntry(payload) {
+    const complete = Boolean(payload && payload.Available && hasCompleteLineup(payload.Lineup));
+    return {
+      payload,
+      expiresAt: complete ? Infinity : Date.now() + LINEUP_PARTIAL_TTL,
+    };
+  }
+
+  function getCachedLineup(gameID) {
+    const cached = lineupCache.get(gameID);
+    if (!cached) return null;
+    if (Date.now() > cached.expiresAt) {
+      lineupCache.delete(gameID);
+      return null;
+    }
+    return cached.payload;
   }
 
   function teamLabel(team) {
@@ -491,10 +514,13 @@
       order.textContent = entry.Order || index + 1;
       const name = document.createElement('strong');
       name.textContent = entry.Name || 'TBD';
+      const stat = document.createElement('span');
+      stat.className = 'lineup-stat';
+      stat.textContent = entry.Position === 'P' ? '' : (entry.BattingAverage || '');
       const position = document.createElement('span');
       position.className = 'lineup-position';
       position.textContent = entry.Position || '';
-      item.append(order, name, position);
+      item.append(order, name, stat, position);
       list.append(item);
     });
     return [list];
@@ -517,6 +543,12 @@
     const name = document.createElement('strong');
     name.textContent = pitcherLabel(pitcher);
     card.append(label, name);
+    if (pitcher && pitcher.ERA) {
+      const stat = document.createElement('span');
+      stat.className = 'lineup-pitcher-stat';
+      stat.textContent = `ERA ${pitcher.ERA}`;
+      card.append(stat);
+    }
     return card;
   }
 
@@ -631,15 +663,16 @@
       if (!gameID) return;
 
       showLineupLoading(modal, button.dataset.lineupTitle || 'Lineup');
-      if (lineupCache.has(gameID)) {
-        renderLineup(modal, lineupCache.get(gameID));
+      const cached = getCachedLineup(gameID);
+      if (cached) {
+        renderLineup(modal, cached);
         return;
       }
 
       fetch(`/api/games/${encodeURIComponent(gameID)}/lineup`)
         .then((response) => response.ok ? response.json() : Promise.reject(response))
         .then((payload) => {
-          lineupCache.set(gameID, payload);
+          lineupCache.set(gameID, lineupCacheEntry(payload));
           if (payload && payload.Available) markLineupPosted(gameID);
           renderLineup(modal, payload);
         })
@@ -650,6 +683,119 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeLineupModal(modal);
     });
+  }
+
+  function initWorldCupBracketModal() {
+    const modal = document.querySelector('[data-world-cup-bracket-modal]');
+    const openButtons = document.querySelectorAll('[data-world-cup-bracket-open]');
+    if (!modal || !openButtons.length) return;
+
+    const close = () => {
+      modal.hidden = true;
+      document.body.classList.remove('world-cup-bracket-modal-open');
+    };
+    const open = () => {
+      modal.hidden = false;
+      document.body.classList.add('world-cup-bracket-modal-open');
+      const scroller = modal.querySelector('.world-cup-bracket-modal__scroller');
+      if (scroller) {
+        requestAnimationFrame(() => {
+          scroller.scrollLeft = Math.max(0, (scroller.scrollWidth - scroller.clientWidth) / 2);
+        });
+      }
+    };
+
+    openButtons.forEach((button) => button.addEventListener('click', open));
+    modal.addEventListener('click', (event) => {
+      if (event.target.closest('[data-world-cup-bracket-close]')) close();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !modal.hidden) close();
+    });
+  }
+
+  function initWorldCupTabs() {
+    const root = document.querySelector('[data-world-cup-tabs]');
+    if (!root) return;
+
+    const tabs = Array.from(root.querySelectorAll('[data-world-cup-tab]'));
+    const panels = Array.from(root.querySelectorAll('[data-world-cup-panel]'));
+    const activate = (name) => {
+      tabs.forEach((tab) => {
+        const active = tab.dataset.worldCupTab === name;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      panels.forEach((panel) => {
+        const active = panel.dataset.worldCupPanel === name;
+        panel.hidden = !active;
+        panel.classList.toggle('active', active);
+      });
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => activate(tab.dataset.worldCupTab));
+    });
+  }
+
+  function worldCupMatchesFromPayload(cup) {
+    const matches = [];
+    const add = (items) => {
+      if (Array.isArray(items)) matches.push(...items);
+    };
+    add(cup && cup.Live);
+    add(cup && cup.Upcoming);
+    if (cup && Array.isArray(cup.Bracket)) {
+      cup.Bracket.forEach((round) => add(round && round.Matches));
+    }
+    return matches.filter((match) => match && match.ID);
+  }
+
+  function worldCupStatusLabel(match) {
+    if (!match) return '';
+    if (match.Status === 'Live') return match.Period || 'Live';
+    if (match.Status === 'Final') return 'Final';
+    return '';
+  }
+
+  function updateWorldCupMatchDOM(match) {
+    document.querySelectorAll(`[data-world-cup-match="${CSS.escape(match.ID)}"]`).forEach((card) => {
+      const isLive = match.Status === 'Live';
+      const isFinal = match.Status === 'Final';
+      card.classList.toggle('world-cup-match--live', isLive);
+      card.classList.toggle('world-cup-bracket-match--live', isLive);
+      card.classList.toggle('world-cup-bracket-match--final', isFinal);
+
+      const status = card.querySelector('[data-world-cup-status]');
+      const label = worldCupStatusLabel(match);
+      if (status && label) status.textContent = label;
+
+      const awayScore = card.querySelector('[data-world-cup-score="away"]');
+      const homeScore = card.querySelector('[data-world-cup-score="home"]');
+      [awayScore, homeScore].forEach((score) => {
+        if (score) score.hidden = !(isLive || isFinal);
+      });
+      if (awayScore) awayScore.textContent = match.AwayScore;
+      if (homeScore) homeScore.textContent = match.HomeScore;
+
+      const away = card.querySelector('[data-world-cup-side="away"]');
+      const home = card.querySelector('[data-world-cup-side="home"]');
+      if (away && home) {
+        away.classList.remove('world-cup-bracket-team--winner');
+        home.classList.remove('world-cup-bracket-team--winner');
+        if (isFinal && match.AwayScore !== match.HomeScore) {
+          (match.AwayScore > match.HomeScore ? away : home).classList.add('world-cup-bracket-team--winner');
+        }
+      }
+    });
+  }
+
+  function pollWorldCup() {
+    if (!document.querySelector('[data-world-cup-match]')) return;
+    fetch('/api/world-cup')
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((cup) => worldCupMatchesFromPayload(cup).forEach(updateWorldCupMatchDOM))
+      .catch(() => {});
   }
 
   function emit(name, detail) {
@@ -711,6 +857,10 @@
   initSchedulePicker();
   initLeagueStandingsPicker();
   initLineupButtons();
+  initWorldCupBracketModal();
+  initWorldCupTabs();
+  pollWorldCup();
+  setInterval(pollWorldCup, POLL_INTERVAL);
   pollScores();
   setInterval(pollScores, POLL_INTERVAL);
 
