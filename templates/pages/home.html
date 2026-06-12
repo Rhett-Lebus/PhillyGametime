@@ -34,13 +34,13 @@
           <div class="live-matchup" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
             <div class="live-team live-team--away">
               <div class="live-logo">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
-              <span class="live-name">{{.AwayTeam.Name}}</span>
+              <span class="live-name">{{.AwayTeam.Name}}{{with .Soccer}}<span class="live-soccer-stats"><span><small>SOG</small><b data-soccer-stat="away-shots">{{.AwayStats.Shots}}</b></span><span><small>SOT</small><b data-soccer-stat="away-target">{{.AwayStats.ShotsOnTarget}}</b></span><span><i class="soccer-card soccer-card--yellow" title="Yellow cards"></i><b data-soccer-card="away-yellow">{{.AwayStats.YellowCards}}</b></span><span><i class="soccer-card soccer-card--red" title="Red cards"></i><b data-soccer-card="away-red">{{.AwayStats.RedCards}}</b></span></span>{{end}}</span>
               <span class="score-value score-away">{{.AwayScore}}</span>
             </div>
             <span class="live-vs">vs</span>
             <div class="live-team live-team--home">
               <span class="score-value score-home">{{.HomeScore}}</span>
-              <span class="live-name">{{.HomeTeam.Name}}</span>
+              <span class="live-name">{{.HomeTeam.Name}}{{with .Soccer}}<span class="live-soccer-stats"><span><small>SOG</small><b data-soccer-stat="home-shots">{{.HomeStats.Shots}}</b></span><span><small>SOT</small><b data-soccer-stat="home-target">{{.HomeStats.ShotsOnTarget}}</b></span><span><i class="soccer-card soccer-card--yellow" title="Yellow cards"></i><b data-soccer-card="home-yellow">{{.HomeStats.YellowCards}}</b></span><span><i class="soccer-card soccer-card--red" title="Red cards"></i><b data-soccer-card="home-red">{{.HomeStats.RedCards}}</b></span></span>{{end}}</span>
               <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
             </div>
           </div>
@@ -86,6 +86,7 @@
             {{end}}
           </div>
           {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
+          {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
         </article>
         {{else}}
         <div class="empty-state">No Philly games are live today. Upcoming matchups are below.</div>
@@ -167,10 +168,10 @@
         <tbody>
           {{range .Standings}}
           <tr style="--team-color:{{.Team.Primary}}">
-            <td><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.Name}}</span></td>
-            <td><span class="stat-value">{{.Record}}</span></td>
-            <td><span class="stat-value">{{.Home}}</span></td>
-            <td><span class="stat-value">{{.Away}}</span></td>
+            <td><a class="standings-cell-link" href="/stats?team={{.Team.ID}}&sport={{.Team.Sport}}" aria-label="View {{.Team.Name}} standings"><span class="mini-team"><span class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</span>{{.Team.Name}}</span></a></td>
+            <td><a class="standings-cell-link" href="/stats?team={{.Team.ID}}&sport={{.Team.Sport}}" aria-label="View {{.Team.Name}} standings"><span class="stat-value">{{.Record}}</span></a></td>
+            <td><a class="standings-cell-link" href="/stats?team={{.Team.ID}}&sport={{.Team.Sport}}" aria-label="View {{.Team.Name}} standings"><span class="stat-value">{{.Home}}</span></a></td>
+            <td><a class="standings-cell-link" href="/stats?team={{.Team.ID}}&sport={{.Team.Sport}}" aria-label="View {{.Team.Name}} standings"><span class="stat-value">{{.Away}}</span></a></td>
           </tr>
           {{end}}
         </tbody>

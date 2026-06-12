@@ -37,6 +37,16 @@ func TestShouldShowThemePickerInMockMode(t *testing.T) {
 	}
 }
 
+func TestShouldShowThemePickerInUppercaseMockMode(t *testing.T) {
+	t.Setenv("PHILLY_DATA", "MOCK")
+	t.Setenv("PHILLY_ENV", "")
+	t.Setenv("PORT", "8081")
+
+	if !shouldShowThemePicker() {
+		t.Fatal("shouldShowThemePicker() = false, want true for uppercase mock mode")
+	}
+}
+
 func TestShouldHideThemePickerInProduction(t *testing.T) {
 	t.Setenv("PHILLY_DATA", "mock")
 	t.Setenv("PHILLY_ENV", "production")
@@ -153,7 +163,7 @@ func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecific(t *testing.T) {
 		},
 	}
 
-	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.MLB: true})
+	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.MLB: true}, "")
 	if len(got) != 1 || len(got[0].Views) != 3 {
 		t.Fatalf("buildLeagueStandingsViews() = %#v, want one league with three views", got)
 	}
@@ -165,5 +175,35 @@ func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecific(t *testing.T) {
 	}
 	if !got[0].Views[0].Active {
 		t.Fatalf("overall view Active = false, want true")
+	}
+}
+
+func TestRequestedStatsSportUsesTeamQuery(t *testing.T) {
+	rows := []models.StandingsRow{
+		{Team: models.Team{ID: "22", Name: "Phillies", Sport: models.MLB}},
+		{Team: models.Team{ID: "10739", Name: "Union", Sport: models.MLS}},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/stats?team=10739", nil)
+
+	if got := requestedStatsSport(req, rows); got != models.MLS {
+		t.Fatalf("requestedStatsSport() = %q, want MLS", got)
+	}
+}
+
+func TestBuildLeagueStandingsViewsUsesSelectedSport(t *testing.T) {
+	leagues := []models.LeagueStandings{
+		{Sport: models.MLB, Views: []models.StandingsView{{Key: "overall", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}}}}}},
+		{Sport: models.MLS, Views: []models.StandingsView{{Key: "overall", Rows: []models.StandingsRow{{Team: models.Team{Name: "Union", Sport: models.MLS}}}}}},
+	}
+
+	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.MLB: true, models.MLS: true}, models.MLS)
+	var active models.Sport
+	for _, view := range got {
+		if view.Active {
+			active = view.Sport
+		}
+	}
+	if active != models.MLS {
+		t.Fatalf("active sport = %q, want MLS; views=%#v", active, got)
 	}
 }

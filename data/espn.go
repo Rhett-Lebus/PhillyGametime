@@ -156,6 +156,7 @@ type espnTeam struct {
 	Abbreviation     string `json:"abbreviation"`
 	Color            string `json:"color"`
 	AlternateColor   string `json:"alternateColor"`
+	Logo             string `json:"logo"`
 	Logos            []struct {
 		Href string `json:"href"`
 	} `json:"logos"`
@@ -227,10 +228,18 @@ type espnStat struct {
 type espnSummaryResp struct {
 	Boxscore espnBoxscore `json:"boxscore"`
 	Videos   []espnVideo  `json:"videos"`
+	Rosters  []espnRoster `json:"rosters"`
 }
 
 type espnBoxscore struct {
-	Players []espnBoxscoreTeam `json:"players"`
+	Players []espnBoxscoreTeam      `json:"players"`
+	Teams   []espnBoxscoreTeamStats `json:"teams"`
+}
+
+type espnBoxscoreTeamStats struct {
+	Team       espnTeam   `json:"team"`
+	Statistics []espnStat `json:"statistics"`
+	HomeAway   string     `json:"homeAway"`
 }
 
 type espnVideo struct {
@@ -263,6 +272,27 @@ type espnBoxscoreStatGroup struct {
 type espnBoxscoreAthlete struct {
 	Athlete espnPlayer `json:"athlete"`
 	Stats   []string   `json:"stats"`
+}
+
+type espnRoster struct {
+	HomeAway  string              `json:"homeAway"`
+	Team      espnTeam            `json:"team"`
+	Roster    []espnRosterAthlete `json:"roster"`
+	Formation string              `json:"formation"`
+}
+
+type espnRosterAthlete struct {
+	Active   bool       `json:"active"`
+	Starter  bool       `json:"starter"`
+	Jersey   string     `json:"jersey"`
+	Athlete  espnPlayer `json:"athlete"`
+	Position struct {
+		Name         string `json:"name"`
+		DisplayName  string `json:"displayName"`
+		Abbreviation string `json:"abbreviation"`
+	} `json:"position"`
+	SubbedIn  bool `json:"subbedIn"`
+	SubbedOut bool `json:"subbedOut"`
 }
 
 type mlbScheduleResp struct {
@@ -630,6 +660,7 @@ var (
 	mlbContentURL         = "https://statsapi.mlb.com/api/v1/game/%d/content?highlightLimit=8"
 	worldCupScoreboardURL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
 	worldCupStandingsURL  = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings"
+	worldCupSummaryURL    = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=%s"
 )
 
 func NewESPNStore() *ESPNStore {
@@ -701,6 +732,9 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 					continue // ESPN scoreboards can include the full week's slate
 				}
 				g = s.enrichMLBGame(g)
+				if g.Status == models.StatusLive && g.Sport == models.MLS {
+					g = s.enrichSoccerGame(g, cfg.SummaryURL)
+				}
 				if shouldPrefetchLineup(g, NowPhilly()) {
 					if lineup, ok := s.cachedMLBLineup(g); ok {
 						g.Lineup = lineup
@@ -1504,6 +1538,9 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	end := now.AddDate(0, 0, 10).Format("20060102")
 	matches := s.fetchWorldCupMatches(start + "-" + end)
 	for _, match := range matches {
+		if match.Status == models.StatusLive {
+			match.Soccer = s.fetchSoccerState(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam)
+		}
 		switch {
 		case match.Status == models.StatusLive:
 			cup.Live = append(cup.Live, match)
@@ -3302,15 +3339,224 @@ func (s *ESPNStore) enrichMLBGame(g models.Game) models.Game {
 	return g
 }
 
+func (s *ESPNStore) enrichSoccerGame(g models.Game, summaryURL string) models.Game {
+	if !isSoccerSport(g.Sport) || summaryURL == "" {
+		return g
+	}
+	g.Soccer = s.fetchSoccerState(g.ID, summaryURL, g.AwayTeam, g.HomeTeam)
+	if g.Soccer != nil && g.Soccer.Lineup != nil {
+		g.Lineup = g.Soccer.Lineup
+	}
+	return g
+}
+
+func (s *ESPNStore) fetchSoccerState(eventID, summaryURL string, awayTeam, homeTeam models.Team) *models.SoccerState {
+	if eventID == "" || summaryURL == "" {
+		return nil
+	}
+	var summary espnSummaryResp
+	if err := s.fetchJSON(fmt.Sprintf(summaryURL, eventID), &summary); err != nil {
+		return nil
+	}
+	state := soccerStateFromSummary(summary, awayTeam, homeTeam)
+	if state == nil || (!hasSoccerStats(state) && !hasLineupEntries(state.Lineup)) {
+		return nil
+	}
+	return state
+}
+
+func soccerStateFromSummary(summary espnSummaryResp, awayTeam, homeTeam models.Team) *models.SoccerState {
+	state := &models.SoccerState{
+		AwayStats: soccerTeamStats(summary.Boxscore.Teams, "away", awayTeam),
+		HomeStats: soccerTeamStats(summary.Boxscore.Teams, "home", homeTeam),
+		Lineup:    soccerLineupFromRosters(summary.Rosters, awayTeam, homeTeam),
+	}
+	if !hasSoccerStats(state) && !hasLineupEntries(state.Lineup) {
+		return nil
+	}
+	return state
+}
+
+func soccerTeamStats(teams []espnBoxscoreTeamStats, homeAway string, fallback models.Team) models.SoccerTeamStats {
+	for _, team := range teams {
+		if strings.EqualFold(team.HomeAway, homeAway) || sameProviderTeam(team.Team, fallback) {
+			return models.SoccerTeamStats{
+				Shots:         espnStatDisplay(team.Statistics, "totalShots"),
+				ShotsOnTarget: espnStatDisplay(team.Statistics, "shotsOnTarget"),
+				YellowCards:   espnStatDisplay(team.Statistics, "yellowCards"),
+				RedCards:      espnStatDisplay(team.Statistics, "redCards"),
+			}
+		}
+	}
+	return models.SoccerTeamStats{}
+}
+
+func espnStatDisplay(stats []espnStat, names ...string) string {
+	for _, name := range names {
+		for _, stat := range stats {
+			if strings.EqualFold(stat.Name, name) || strings.EqualFold(stat.Abbreviation, name) || strings.EqualFold(stat.DisplayName, name) || strings.EqualFold(stat.ShortName, name) {
+				if strings.TrimSpace(stat.DisplayValue) != "" {
+					return stat.DisplayValue
+				}
+				return strconv.Itoa(int(stat.Value))
+			}
+		}
+	}
+	return ""
+}
+
+func soccerLineupFromRosters(rosters []espnRoster, awayTeam, homeTeam models.Team) *models.BaseballLineup {
+	lineup := &models.BaseballLineup{
+		AwayTeam: awayTeam,
+		HomeTeam: homeTeam,
+	}
+	for _, roster := range rosters {
+		team := soccerRosterTeam(roster.Team)
+		entries := soccerLineupEntries(roster.Roster)
+		switch {
+		case strings.EqualFold(roster.HomeAway, "away") || sameProviderTeam(roster.Team, awayTeam):
+			if team.ID != "" {
+				lineup.AwayTeam = team
+			}
+			lineup.Away = entries
+		case strings.EqualFold(roster.HomeAway, "home") || sameProviderTeam(roster.Team, homeTeam):
+			if team.ID != "" {
+				lineup.HomeTeam = team
+			}
+			lineup.Home = entries
+		}
+	}
+	if !hasLineupEntries(lineup) {
+		return nil
+	}
+	return lineup
+}
+
+func soccerRosterTeam(team espnTeam) models.Team {
+	t := espnToTeam(team, models.MLS)
+	if t.LogoURL == "" {
+		t.LogoURL = strings.TrimSpace(team.Logo)
+	}
+	return t
+}
+
+func soccerLineupEntries(roster []espnRosterAthlete) []models.BaseballLineupEntry {
+	entries := make([]models.BaseballLineupEntry, 0, 11)
+	for _, player := range roster {
+		if !soccerPlayerOnField(player) {
+			continue
+		}
+		name := espnPlayerName(player.Athlete)
+		if name == "" {
+			continue
+		}
+		entries = append(entries, models.BaseballLineupEntry{
+			Order:          soccerJerseyNumber(player.Jersey),
+			Name:           name,
+			Position:       soccerPositionLabel(player.Position.Abbreviation, player.Position.DisplayName),
+			BattingAverage: "",
+		})
+	}
+	return entries
+}
+
+func soccerPlayerOnField(player espnRosterAthlete) bool {
+	if player.SubbedOut {
+		return false
+	}
+	return player.Starter || player.SubbedIn
+}
+
+func soccerJerseyNumber(jersey string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(jersey))
+	return n
+}
+
+func soccerPositionLabel(abbr, name string) string {
+	if strings.TrimSpace(abbr) != "" {
+		return strings.TrimSpace(abbr)
+	}
+	return strings.TrimSpace(name)
+}
+
+func hasSoccerStats(state *models.SoccerState) bool {
+	if state == nil {
+		return false
+	}
+	for _, stat := range []string{
+		state.AwayStats.Shots, state.AwayStats.ShotsOnTarget, state.AwayStats.YellowCards, state.AwayStats.RedCards,
+		state.HomeStats.Shots, state.HomeStats.ShotsOnTarget, state.HomeStats.YellowCards, state.HomeStats.RedCards,
+	} {
+		if strings.TrimSpace(stat) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func sameProviderTeam(team espnTeam, model models.Team) bool {
+	if team.ID != "" && model.ID != "" && strings.EqualFold(team.ID, model.ID) {
+		return true
+	}
+	name := firstNonEmpty(team.DisplayName, team.ShortDisplayName, team.Location, team.Name, team.Nickname)
+	return name != "" && strings.EqualFold(name, strings.TrimSpace(model.City+" "+model.Name))
+}
+
 func (s *ESPNStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 	game, ok := s.GetGameByID(id)
-	if !ok || game.Sport != models.MLB {
+	if !ok {
+		return s.fetchSoccerLineupByID(id)
+	}
+	if isSoccerSport(game.Sport) {
+		if game.Lineup != nil && hasLineupEntries(game.Lineup) {
+			return game.Lineup, true
+		}
+		summaryURL := soccerSummaryURLForSport(game.Sport)
+		if state := s.fetchSoccerState(game.ID, summaryURL, game.AwayTeam, game.HomeTeam); state != nil && hasLineupEntries(state.Lineup) {
+			return state.Lineup, true
+		}
+		return nil, false
+	}
+	if game.Sport != models.MLB {
 		return nil, false
 	}
 	if game.Lineup != nil && hasCompleteLineupEntries(game.Lineup) {
 		return game.Lineup, true
 	}
 	return s.cachedMLBLineup(*game)
+}
+
+func (s *ESPNStore) fetchSoccerLineupByID(id string) (*models.BaseballLineup, bool) {
+	if id == "" {
+		return nil, false
+	}
+	for _, match := range s.GetWorldCup().Live {
+		if match.ID == id && match.Soccer != nil && hasLineupEntries(match.Soccer.Lineup) {
+			return match.Soccer.Lineup, true
+		}
+	}
+	if state := s.fetchSoccerState(id, worldCupSummaryURL, models.Team{}, models.Team{}); state != nil && hasLineupEntries(state.Lineup) {
+		return state.Lineup, true
+	}
+	return nil, false
+}
+
+func soccerSummaryURLForSport(sport models.Sport) string {
+	switch sport {
+	case models.MLS:
+		for _, cfg := range sportConfigs {
+			if cfg.Sport == models.MLS {
+				return cfg.SummaryURL
+			}
+		}
+	case models.FIFA:
+		return worldCupSummaryURL
+	}
+	return ""
+}
+
+func isSoccerSport(sport models.Sport) bool {
+	return sport == models.MLS || sport == models.FIFA
 }
 
 func (s *ESPNStore) prefetchUpcomingLineups(games []models.Game, now time.Time) {
@@ -3862,6 +4108,8 @@ func worldCupFlagCode(value string) string {
 		return "at"
 	case "BEL":
 		return "be"
+	case "BIH":
+		return "ba"
 	case "BRA":
 		return "br"
 	case "CAN":
@@ -3964,59 +4212,62 @@ func worldCupFlagCode(value string) string {
 		return "gb-wls"
 	}
 	if code, ok := map[string]string{
-		"ALGERIA":       "dz",
-		"ARGENTINA":     "ar",
-		"AUSTRALIA":     "au",
-		"AUSTRIA":       "at",
-		"BELGIUM":       "be",
-		"BRAZIL":        "br",
-		"CANADA":        "ca",
-		"CAPE VERDE":    "cv",
-		"COLOMBIA":      "co",
-		"COSTA RICA":    "cr",
-		"CROATIA":       "hr",
-		"CURACAO":       "cw",
-		"CZECHIA":       "cz",
-		"DENMARK":       "dk",
-		"ECUADOR":       "ec",
-		"EGYPT":         "eg",
-		"ENGLAND":       "gb-eng",
-		"FRANCE":        "fr",
-		"GERMANY":       "de",
-		"GHANA":         "gh",
-		"HAITI":         "ht",
-		"HONDURAS":      "hn",
-		"IRAN":          "ir",
-		"ITALY":         "it",
-		"IVORY COAST":   "ci",
-		"JAMAICA":       "jm",
-		"JAPAN":         "jp",
-		"JORDAN":        "jo",
-		"MEXICO":        "mx",
-		"MOROCCO":       "ma",
-		"NETHERLANDS":   "nl",
-		"NEW ZEALAND":   "nz",
-		"NORWAY":        "no",
-		"PANAMA":        "pa",
-		"PARAGUAY":      "py",
-		"PORTUGAL":      "pt",
-		"QATAR":         "qa",
-		"SAUDI ARABIA":  "sa",
-		"SCOTLAND":      "gb-sct",
-		"SENEGAL":       "sn",
-		"SERBIA":        "rs",
-		"SOUTH AFRICA":  "za",
-		"SOUTH KOREA":   "kr",
-		"SPAIN":         "es",
-		"SWEDEN":        "se",
-		"SWITZERLAND":   "ch",
-		"TUNISIA":       "tn",
-		"TURKEY":        "tr",
-		"UKRAINE":       "ua",
-		"UNITED STATES": "us",
-		"URUGUAY":       "uy",
-		"UZBEKISTAN":    "uz",
-		"WALES":         "gb-wls",
+		"ALGERIA":                "dz",
+		"ARGENTINA":              "ar",
+		"AUSTRALIA":              "au",
+		"AUSTRIA":                "at",
+		"BELGIUM":                "be",
+		"BOSNIA AND HERZEGOVINA": "ba",
+		"BOSNIA HERZEGOVINA":     "ba",
+		"BOSNIA-HERZEGOVINA":     "ba",
+		"BRAZIL":                 "br",
+		"CANADA":                 "ca",
+		"CAPE VERDE":             "cv",
+		"COLOMBIA":               "co",
+		"COSTA RICA":             "cr",
+		"CROATIA":                "hr",
+		"CURACAO":                "cw",
+		"CZECHIA":                "cz",
+		"DENMARK":                "dk",
+		"ECUADOR":                "ec",
+		"EGYPT":                  "eg",
+		"ENGLAND":                "gb-eng",
+		"FRANCE":                 "fr",
+		"GERMANY":                "de",
+		"GHANA":                  "gh",
+		"HAITI":                  "ht",
+		"HONDURAS":               "hn",
+		"IRAN":                   "ir",
+		"ITALY":                  "it",
+		"IVORY COAST":            "ci",
+		"JAMAICA":                "jm",
+		"JAPAN":                  "jp",
+		"JORDAN":                 "jo",
+		"MEXICO":                 "mx",
+		"MOROCCO":                "ma",
+		"NETHERLANDS":            "nl",
+		"NEW ZEALAND":            "nz",
+		"NORWAY":                 "no",
+		"PANAMA":                 "pa",
+		"PARAGUAY":               "py",
+		"PORTUGAL":               "pt",
+		"QATAR":                  "qa",
+		"SAUDI ARABIA":           "sa",
+		"SCOTLAND":               "gb-sct",
+		"SENEGAL":                "sn",
+		"SERBIA":                 "rs",
+		"SOUTH AFRICA":           "za",
+		"SOUTH KOREA":            "kr",
+		"SPAIN":                  "es",
+		"SWEDEN":                 "se",
+		"SWITZERLAND":            "ch",
+		"TUNISIA":                "tn",
+		"TURKEY":                 "tr",
+		"UKRAINE":                "ua",
+		"UNITED STATES":          "us",
+		"URUGUAY":                "uy",
+		"UZBEKISTAN":             "uz",
+		"WALES":                  "gb-wls",
 	}[key]; ok {
 		return code
 	}

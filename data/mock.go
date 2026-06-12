@@ -137,6 +137,27 @@ func (s *MockStore) GetTodaysGames() []models.Game {
 			Broadcast: []string{"NBC Sports Philadelphia"},
 			Sport:     models.MLB,
 		},
+		{
+			ID:        "game-union-miami",
+			HomeTeam:  Union,
+			AwayTeam:  models.Team{ID: "20232", Name: "Inter Miami CF", City: "", Abbr: "MIA", Sport: models.MLS, Primary: "#231F20", Secondary: "#F7B5CD", LogoURL: "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png"},
+			HomeScore: 2,
+			AwayScore: 1,
+			Status:    models.StatusLive,
+			Period:    "2nd Half",
+			TimeLeft:  "68'",
+			Soccer: &models.SoccerState{
+				AwayStats: models.SoccerTeamStats{Shots: "9", ShotsOnTarget: "4", YellowCards: "2", RedCards: "0"},
+				HomeStats: models.SoccerTeamStats{Shots: "13", ShotsOnTarget: "6", YellowCards: "1", RedCards: "0"},
+				Lineup:    mockSoccerLineup(),
+			},
+			Lineup:    mockSoccerLineup(),
+			StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 19, 30, 0),
+			Venue:     "Subaru Park",
+			City:      "Chester, PA",
+			Broadcast: []string{"Apple TV+"},
+			Sport:     models.MLS,
+		},
 	}
 }
 
@@ -429,6 +450,11 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 				HomeScore: 1, AwayScore: 0, Status: models.StatusLive, Period: "1st Half", TimeLeft: "34'",
 				StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 15, 0, 0),
 				Venue:     "Estadio Banorte", City: "Mexico City", Broadcast: []string{"FOX", "Tele", "Peacock"},
+				Soccer: &models.SoccerState{
+					AwayStats: models.SoccerTeamStats{Shots: "5", ShotsOnTarget: "2", YellowCards: "1", RedCards: "0"},
+					HomeStats: models.SoccerTeamStats{Shots: "8", ShotsOnTarget: "4", YellowCards: "0", RedCards: "0"},
+					Lineup:    mockSoccerLineupFor(southAfrica, mexico),
+				},
 			},
 		},
 		Upcoming: []models.WorldCupMatch{
@@ -514,10 +540,39 @@ func worldCupTeam(id, name, abbr, color, logo string) models.Team {
 
 func (s *MockStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 	game, ok := s.GetGameByID(id)
-	if !ok || game.Sport != models.MLB || game.Lineup == nil {
-		return nil, false
+	if ok && game.Lineup != nil && (game.Sport == models.MLB || game.Sport == models.MLS || game.Sport == models.FIFA) {
+		return game.Lineup, true
 	}
-	return game.Lineup, true
+	for _, match := range s.GetWorldCup().Live {
+		if match.ID == id && match.Soccer != nil && match.Soccer.Lineup != nil {
+			return match.Soccer.Lineup, true
+		}
+	}
+	return nil, false
+}
+
+func mockSoccerLineup() *models.BaseballLineup {
+	miami := models.Team{ID: "20232", Name: "Inter Miami CF", Abbr: "MIA", Sport: models.MLS, Primary: "#231F20", Secondary: "#F7B5CD", LogoURL: "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png"}
+	return mockSoccerLineupFor(miami, Union)
+}
+
+func mockSoccerLineupFor(away, home models.Team) *models.BaseballLineup {
+	return &models.BaseballLineup{
+		AwayTeam: away,
+		HomeTeam: home,
+		Away: []models.BaseballLineupEntry{
+			{Order: 1, Name: "Oscar Ustari", Position: "G"},
+			{Order: 2, Name: "Ian Fray", Position: "RB"},
+			{Order: 5, Name: "Sergio Busquets", Position: "DM"},
+			{Order: 10, Name: "Lionel Messi", Position: "FW"},
+		},
+		Home: []models.BaseballLineupEntry{
+			{Order: 18, Name: "Andre Blake", Position: "G"},
+			{Order: 5, Name: "Jakob Glesnes", Position: "CB"},
+			{Order: 8, Name: "Jovan Lukic", Position: "CM"},
+			{Order: 7, Name: "Mikael Uhre", Position: "FW"},
+		},
+	}
 }
 
 func philliesMetsLineup() *models.BaseballLineup {

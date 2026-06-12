@@ -45,6 +45,7 @@ type Game struct {
 	Period      string // "Q3", "4th", "7th Inning", "P2", "90'"
 	TimeLeft    string // "04:12"
 	Baseball    *BaseballState
+	Soccer      *SoccerState
 	Lineup      *BaseballLineup
 	Probable    *BaseballProbablePitchers
 	StartTime   time.Time
@@ -106,6 +107,19 @@ type BaseballLineupPitcher struct {
 type BaseballProbablePitchers struct {
 	Away BaseballLineupPitcher
 	Home BaseballLineupPitcher
+}
+
+type SoccerState struct {
+	AwayStats SoccerTeamStats
+	HomeStats SoccerTeamStats
+	Lineup    *BaseballLineup
+}
+
+type SoccerTeamStats struct {
+	Shots         string
+	ShotsOnTarget string
+	YellowCards   string
+	RedCards      string
 }
 
 type StandingsRow struct {
@@ -178,6 +192,7 @@ type WorldCupMatch struct {
 	Venue     string
 	City      string
 	Broadcast []string
+	Soccer    *SoccerState
 }
 
 type WorldCupGroup struct {

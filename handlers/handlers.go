@@ -38,7 +38,7 @@ func shouldShowThemePicker() bool {
 	if env == "production" || env == "prod" {
 		return false
 	}
-	if os.Getenv("PHILLY_DATA") == "mock" || env == "local" || env == "dev" || env == "development" {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("PHILLY_DATA")), "mock") || env == "local" || env == "dev" || env == "development" {
 		return true
 	}
 	return os.Getenv("PORT") == "" || os.Getenv("PORT") == "8080"
@@ -624,16 +624,17 @@ func sameTeam(a, b models.Team) bool {
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	standings := h.store.GetStandings()
+	activeSport := requestedStatsSport(r, standings)
 	h.render(w, "stats", StatsData{
 		NavActive:       "stats",
 		Title:           "Stats",
 		Standings:       standings,
-		LeagueStandings: buildLeagueStandingsViews(h.store.GetLeagueStandings(), activeStandingsSports(standings)),
+		LeagueStandings: buildLeagueStandingsViews(h.store.GetLeagueStandings(), activeStandingsSports(standings), activeSport),
 		Recent:          h.store.GetRecentResults(),
 	})
 }
 
-func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports map[models.Sport]bool) []LeagueStandingsView {
+func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports map[models.Sport]bool, selectedSport models.Sport) []LeagueStandingsView {
 	leagues = append([]models.LeagueStandings(nil), leagues...)
 	sort.SliceStable(leagues, func(i, j int) bool {
 		return statsLeagueSportLess(leagues[i].Sport, leagues[j].Sport, activeSports)
@@ -668,11 +669,66 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports ma
 		views = append(views, LeagueStandingsView{
 			Sport:  league.Sport,
 			Label:  teamLabelForSport(league.Sport),
-			Active: len(views) == 0,
+			Active: (selectedSport != "" && league.Sport == selectedSport) || (selectedSport == "" && len(views) == 0),
 			Views:  scopeViews,
 		})
 	}
 	return views
+}
+
+func requestedStatsSport(r *http.Request, standings []models.StandingsRow) models.Sport {
+	if r == nil {
+		return ""
+	}
+	query := r.URL.Query()
+	if sport := parseStatsSport(query.Get("sport")); sport != "" {
+		return sport
+	}
+
+	team := strings.TrimSpace(query.Get("team"))
+	if team == "" {
+		return ""
+	}
+	for _, row := range standings {
+		if strings.EqualFold(row.Team.ID, team) || strings.EqualFold(row.Team.Name, team) {
+			return row.Team.Sport
+		}
+	}
+	return statsSportForTeamID(team)
+}
+
+func parseStatsSport(value string) models.Sport {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case string(models.MLB):
+		return models.MLB
+	case string(models.NFL):
+		return models.NFL
+	case string(models.NHL):
+		return models.NHL
+	case string(models.NBA):
+		return models.NBA
+	case string(models.MLS):
+		return models.MLS
+	default:
+		return ""
+	}
+}
+
+func statsSportForTeamID(team string) models.Sport {
+	switch strings.ToLower(strings.TrimSpace(team)) {
+	case "22", "phillies":
+		return models.MLB
+	case "21", "eagles":
+		return models.NFL
+	case "15", "flyers":
+		return models.NHL
+	case "20", "sixers", "76ers":
+		return models.NBA
+	case "10739", "union":
+		return models.MLS
+	default:
+		return ""
+	}
 }
 
 func activeStandingsSports(rows []models.StandingsRow) map[models.Sport]bool {
@@ -787,11 +843,21 @@ func (h *Handler) APIGameLineup(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("id"))
 	game, ok := h.store.GetGameByID(id)
 	if !ok {
-		http.NotFound(w, r)
+		lineupProvider, providerOK := h.store.(interface {
+			GetGameLineup(string) (*models.BaseballLineup, bool)
+		})
+		if providerOK {
+			lineup, available := lineupProvider.GetGameLineup(id)
+			if available {
+				writeJSON(w, map[string]interface{}{"Available": true, "Lineup": lineup})
+				return
+			}
+		}
+		writeJSON(w, map[string]interface{}{"Available": false, "Message": "Lineup has not been posted yet."})
 		return
 	}
-	if game.Sport != models.MLB {
-		http.Error(w, "lineups are available for baseball games only", http.StatusBadRequest)
+	if game.Sport != models.MLB && game.Sport != models.MLS && game.Sport != models.FIFA {
+		http.Error(w, "lineups are available for baseball and soccer games only", http.StatusBadRequest)
 		return
 	}
 

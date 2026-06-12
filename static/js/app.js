@@ -183,8 +183,33 @@
     const sections = Array.from(document.querySelectorAll('[data-league-sport]'));
     if (!select || sections.length === 0) return;
     const standingsPanel = select.closest('.league-standings-panel');
+    const teamSportMap = new Map([
+      ['21', 'NFL'],
+      ['eagles', 'NFL'],
+      ['15', 'NHL'],
+      ['flyers', 'NHL'],
+      ['22', 'MLB'],
+      ['phillies', 'MLB'],
+      ['20', 'NBA'],
+      ['sixers', 'NBA'],
+      ['76ers', 'NBA'],
+      ['10739', 'MLS'],
+      ['union', 'MLS'],
+    ]);
     let jumpToken = 0;
     let jumping = false;
+
+    const sportValues = Array.from(select.options).map((option) => option.value);
+
+    const sportFromURL = () => {
+      const params = new URLSearchParams(window.location.search);
+      const sport = (params.get('sport') || '').toUpperCase();
+      if (sportValues.includes(sport)) return sport;
+
+      const team = (params.get('team') || '').trim().toLowerCase();
+      const teamSport = teamSportMap.get(team);
+      return sportValues.includes(teamSport) ? teamSport : '';
+    };
 
     const setFloatingControls = (stuck) => {
       if (!standingsPanel || jumping) return;
@@ -290,7 +315,9 @@
     });
     window.addEventListener('scroll', updateFloatingControls, { passive: true });
     window.addEventListener('resize', updateFloatingControls);
-    showSport(select.value, false);
+    const initialSport = sportFromURL();
+    if (initialSport) select.value = initialSport;
+    showSport(select.value, !!initialSport);
     updateFloatingControls();
   }
 
@@ -401,10 +428,33 @@
         }));
       }
     }
+    updateSoccerPulse(card, game.Soccer);
     if (changed) {
       card.classList.add('score-updated');
       setTimeout(() => card.classList.remove('score-updated'), 800);
     }
+  }
+
+  function soccerStatValue(value) {
+    return value === undefined || value === null || value === '' ? '-' : value;
+  }
+
+  function updateSoccerPulse(card, soccer) {
+    if (!card || !soccer || !card.querySelector('[data-soccer-stat], [data-soccer-card]')) return;
+    const setText = (selector, value) => {
+      const node = card.querySelector(selector);
+      if (node) node.textContent = value;
+    };
+    const away = soccer.AwayStats || {};
+    const home = soccer.HomeStats || {};
+    setText('[data-soccer-stat="away-shots"]', soccerStatValue(away.Shots));
+    setText('[data-soccer-stat="home-shots"]', soccerStatValue(home.Shots));
+    setText('[data-soccer-stat="away-target"]', soccerStatValue(away.ShotsOnTarget));
+    setText('[data-soccer-stat="home-target"]', soccerStatValue(home.ShotsOnTarget));
+    setText('[data-soccer-card="away-yellow"]', soccerStatValue(away.YellowCards));
+    setText('[data-soccer-card="away-red"]', soccerStatValue(away.RedCards));
+    setText('[data-soccer-card="home-yellow"]', soccerStatValue(home.YellowCards));
+    setText('[data-soccer-card="home-red"]', soccerStatValue(home.RedCards));
   }
 
   function scheduleScoreFor(game, phillyHome) {
@@ -759,6 +809,10 @@
   }
 
   function updateWorldCupMatchDOM(match) {
+    if (match.Soccer && match.Soccer.Lineup) {
+      lineupCache.set(match.ID, lineupCacheEntry({ Available: true, Lineup: match.Soccer.Lineup }));
+      markLineupPosted(match.ID);
+    }
     document.querySelectorAll(`[data-world-cup-match="${CSS.escape(match.ID)}"]`).forEach((card) => {
       const isLive = match.Status === 'Live';
       const isFinal = match.Status === 'Final';
@@ -787,6 +841,7 @@
           (match.AwayScore > match.HomeScore ? away : home).classList.add('world-cup-bracket-team--winner');
         }
       }
+      updateSoccerPulse(card, match.Soccer);
     });
   }
 

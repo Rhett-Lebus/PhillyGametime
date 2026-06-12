@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"gametime/data"
@@ -15,7 +16,7 @@ import (
 func main() {
 	bus := events.NewBus()
 	var store data.Store = data.NewESPNStore()
-	if os.Getenv("PHILLY_DATA") == "mock" {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("PHILLY_DATA")), "mock") {
 		store = data.NewMockStore()
 	}
 	if os.Getenv("OPENAI_API_KEY") == "" {

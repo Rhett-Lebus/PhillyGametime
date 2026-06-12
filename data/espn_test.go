@@ -1650,6 +1650,7 @@ func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
 	}{
 		{name: "Curacao abbr", team: models.Team{Abbr: "CUW", Name: "Curaçao"}, want: "https://flagcdn.com/w80/cw.png"},
 		{name: "Ivory Coast abbr", team: models.Team{Abbr: "CIV", Name: "Ivory Coast"}, want: "https://flagcdn.com/w80/ci.png"},
+		{name: "Bosnia-Herzegovina abbr", team: models.Team{Abbr: "BIH", Name: "Bosnia-Herzegovina"}, want: "https://flagcdn.com/w80/ba.png"},
 		{name: "Cape Verde abbr", team: models.Team{Abbr: "CPV", Name: "Cape Verde"}, want: "https://flagcdn.com/w80/cv.png"},
 		{name: "Tunisia abbr", team: models.Team{Abbr: "TUN", Name: "Tunisia"}, want: "https://flagcdn.com/w80/tn.png"},
 		{name: "Sweden abbr", team: models.Team{Abbr: "SWE", Name: "Sweden"}, want: "https://flagcdn.com/w80/se.png"},
@@ -1662,6 +1663,63 @@ func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
 				t.Fatalf("worldCupFlagLogoURL() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSoccerStateFromSummaryIncludesStatsAndPlayersOnField(t *testing.T) {
+	away := models.Team{ID: "1", Name: "Away", Abbr: "AWY", Sport: models.MLS}
+	home := models.Team{ID: "2", Name: "Home", Abbr: "HME", Sport: models.MLS}
+	summary := espnSummaryResp{
+		Boxscore: espnBoxscore{Teams: []espnBoxscoreTeamStats{
+			{
+				HomeAway: "away",
+				Statistics: []espnStat{
+					{Name: "totalShots", DisplayValue: "11"},
+					{Name: "shotsOnTarget", DisplayValue: "5"},
+					{Name: "yellowCards", DisplayValue: "2"},
+					{Name: "redCards", DisplayValue: "0"},
+				},
+			},
+			{
+				HomeAway: "home",
+				Statistics: []espnStat{
+					{Name: "totalShots", DisplayValue: "8"},
+					{Name: "shotsOnTarget", DisplayValue: "3"},
+					{Name: "yellowCards", DisplayValue: "1"},
+					{Name: "redCards", DisplayValue: "1"},
+				},
+			},
+		}},
+		Rosters: []espnRoster{
+			{
+				HomeAway: "away",
+				Roster: []espnRosterAthlete{
+					{Starter: true, Jersey: "10", Athlete: espnPlayer{DisplayName: "Starter One"}},
+					{Starter: true, SubbedOut: true, Jersey: "7", Athlete: espnPlayer{DisplayName: "Subbed Out"}},
+					{SubbedIn: true, Jersey: "9", Athlete: espnPlayer{DisplayName: "Subbed In"}},
+				},
+			},
+			{
+				HomeAway: "home",
+				Roster: []espnRosterAthlete{
+					{Starter: true, Jersey: "1", Athlete: espnPlayer{DisplayName: "Home Keeper"}},
+				},
+			},
+		},
+	}
+
+	got := soccerStateFromSummary(summary, away, home)
+	if got == nil {
+		t.Fatal("soccerStateFromSummary() = nil")
+	}
+	if got.AwayStats.Shots != "11" || got.AwayStats.ShotsOnTarget != "5" || got.HomeStats.RedCards != "1" {
+		t.Fatalf("soccer stats = %#v / %#v", got.AwayStats, got.HomeStats)
+	}
+	if len(got.Lineup.Away) != 2 {
+		t.Fatalf("away lineup len = %d, want 2: %#v", len(got.Lineup.Away), got.Lineup.Away)
+	}
+	if got.Lineup.Away[1].Name != "Subbed In" {
+		t.Fatalf("second away player = %#v, want Subbed In", got.Lineup.Away[1])
 	}
 }
 

@@ -202,14 +202,34 @@
       <span class="world-cup-flag" aria-hidden="true">
         {{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="">{{else}}{{.AwayTeam.Abbr}}{{end}}
       </span>
-      <span>{{.AwayTeam.Name}}</span>
+      <span class="world-cup-team-info">
+        <span class="world-cup-team-name">{{.AwayTeam.Name}}</span>
+        {{with .Soccer}}
+        <span class="world-cup-team-stats">
+          <span><small>SOG</small><b data-soccer-stat="away-shots">{{.AwayStats.Shots}}</b></span>
+          <span><small>SOT</small><b data-soccer-stat="away-target">{{.AwayStats.ShotsOnTarget}}</b></span>
+          <span><i class="soccer-card soccer-card--yellow" title="Yellow cards"></i><b data-soccer-card="away-yellow">{{.AwayStats.YellowCards}}</b></span>
+          <span><i class="soccer-card soccer-card--red" title="Red cards"></i><b data-soccer-card="away-red">{{.AwayStats.RedCards}}</b></span>
+        </span>
+        {{end}}
+      </span>
       <strong data-world-cup-score="away" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.AwayScore}}</strong>
     </div>
     <div data-world-cup-side="home">
       <span class="world-cup-flag" aria-hidden="true">
         {{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="">{{else}}{{.HomeTeam.Abbr}}{{end}}
       </span>
-      <span>{{.HomeTeam.Name}}</span>
+      <span class="world-cup-team-info">
+        <span class="world-cup-team-name">{{.HomeTeam.Name}}</span>
+        {{with .Soccer}}
+        <span class="world-cup-team-stats">
+          <span><small>SOG</small><b data-soccer-stat="home-shots">{{.HomeStats.Shots}}</b></span>
+          <span><small>SOT</small><b data-soccer-stat="home-target">{{.HomeStats.ShotsOnTarget}}</b></span>
+          <span><i class="soccer-card soccer-card--yellow" title="Yellow cards"></i><b data-soccer-card="home-yellow">{{.HomeStats.YellowCards}}</b></span>
+          <span><i class="soccer-card soccer-card--red" title="Red cards"></i><b data-soccer-card="home-red">{{.HomeStats.RedCards}}</b></span>
+        </span>
+        {{end}}
+      </span>
       <strong data-world-cup-score="home" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.HomeScore}}</strong>
     </div>
   </div>
@@ -219,5 +239,6 @@
       {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
     </div>
   </div>
+  {{if .Soccer}}<button type="button" class="lineup-button lineup-button--light lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">Lineup</button>{{end}}
 </article>
 {{end}}
