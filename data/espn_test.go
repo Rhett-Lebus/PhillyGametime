@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -807,13 +808,13 @@ func TestGetRecentResultsAddsMLBHighlights(t *testing.T) {
 	if len(got[0].Highlights) != 1 {
 		t.Fatalf("Highlights = %#v, want 1 MLB highlight", got[0].Highlights)
 	}
-	if got[0].Highlights[0].Provider != "MLB" || got[0].Highlights[0].URL != "https://mlb.example/highlight.mp4" {
-		t.Fatalf("Highlight = %#v, want short MLB recap playback URL", got[0].Highlights[0])
+	if got[0].Highlights[0].Provider != "MLB" || got[0].Highlights[0].URL != "https://mlb.example/condensed.mp4" {
+		t.Fatalf("Highlight = %#v, want condensed MLB highlight playback URL", got[0].Highlights[0])
 	}
-	if got[0].Highlights[0].Title != "Phillies top Mets in series opener" {
-		t.Fatalf("Title = %q, want short game recap", got[0].Highlights[0].Title)
+	if got[0].Highlights[0].Title != "Condensed Game: NYM@PHI - 5/31/26" {
+		t.Fatalf("Title = %q, want condensed game", got[0].Highlights[0].Title)
 	}
-	if got[0].Highlights[0].Thumbnail != "https://img.example/thumb.jpg" {
+	if got[0].Highlights[0].Thumbnail != "https://img.example/condensed.jpg" {
 		t.Fatalf("Thumbnail = %q, want largest provided image", got[0].Highlights[0].Thumbnail)
 	}
 }
@@ -1028,6 +1029,19 @@ func TestPreferredMLBHighlightAvoidsTinyRecapClip(t *testing.T) {
 	got := preferredMLBHighlightItems(items)
 	if len(got) != 1 || got[0].Title != "Condensed Game: NYM@PHI - 5/31/26" {
 		t.Fatalf("preferredMLBHighlightItems() = %#v, want condensed fallback when only recap is tiny", got)
+	}
+}
+
+func TestPreferredMLBHighlightPrefersHighlightOverFullRecap(t *testing.T) {
+	items := []mlbContentItem{
+		{Title: "Full game recap: Phillies vs. Mets", Duration: "00:08:15"},
+		{Title: "Phillies-Mets Game Highlights", Duration: "00:03:42"},
+		{Title: "Bryce Harper RBI double", Duration: "00:00:38"},
+	}
+
+	got := preferredMLBHighlightItems(items)
+	if len(got) != 1 || got[0].Title != "Phillies-Mets Game Highlights" {
+		t.Fatalf("preferredMLBHighlightItems() = %#v, want game highlights over full recap", got)
 	}
 }
 
@@ -1404,6 +1418,23 @@ func standingsEntryWithPoints(id, city, name string, wins, losses, points float6
 	return entry
 }
 
+func TestSortWorldCupStandingsUsesCurrentRanking(t *testing.T) {
+	rows := []models.WorldCupStanding{
+		{Team: models.Team{Name: "Second"}, Points: "4", Diff: "+1", For: "3", Wins: "1"},
+		{Team: models.Team{Name: "First"}, Points: "6", Diff: "+2", For: "4", Wins: "2"},
+		{Team: models.Team{Name: "Third"}, Points: "4", Diff: "+1", For: "2", Wins: "1"},
+		{Team: models.Team{Name: "Fourth"}, Points: "1", Diff: "-2", For: "1", Wins: "0"},
+	}
+
+	sortWorldCupStandings(rows)
+
+	got := []string{rows[0].Team.Name, rows[1].Team.Name, rows[2].Team.Name, rows[3].Team.Name}
+	want := []string{"First", "Second", "Third", "Fourth"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sortWorldCupStandings order = %v, want %v", got, want)
+	}
+}
+
 func TestGenerateAIRecapParsesStructuredResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/responses" {
@@ -1652,6 +1683,9 @@ func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
 		{name: "Ivory Coast abbr", team: models.Team{Abbr: "CIV", Name: "Ivory Coast"}, want: "https://flagcdn.com/w80/ci.png"},
 		{name: "Bosnia-Herzegovina abbr", team: models.Team{Abbr: "BIH", Name: "Bosnia-Herzegovina"}, want: "https://flagcdn.com/w80/ba.png"},
 		{name: "Cape Verde abbr", team: models.Team{Abbr: "CPV", Name: "Cape Verde"}, want: "https://flagcdn.com/w80/cv.png"},
+		{name: "DR Congo abbr", team: models.Team{Abbr: "COD", Name: "Congo DR"}, want: "https://flagcdn.com/w80/cd.png"},
+		{name: "Congo abbr", team: models.Team{Abbr: "CGO", Name: "Congo"}, want: "https://flagcdn.com/w80/cg.png"},
+		{name: "Iraq abbr", team: models.Team{Abbr: "IRQ", Name: "Iraq"}, want: "https://flagcdn.com/w80/iq.png"},
 		{name: "Tunisia abbr", team: models.Team{Abbr: "TUN", Name: "Tunisia"}, want: "https://flagcdn.com/w80/tn.png"},
 		{name: "Sweden abbr", team: models.Team{Abbr: "SWE", Name: "Sweden"}, want: "https://flagcdn.com/w80/se.png"},
 		{name: "name fallback", team: models.Team{Name: "Curaçao"}, want: "https://flagcdn.com/w80/cw.png"},
@@ -1676,6 +1710,7 @@ func TestSoccerStateFromSummaryIncludesStatsAndPlayersOnField(t *testing.T) {
 				Statistics: []espnStat{
 					{Name: "totalShots", DisplayValue: "11"},
 					{Name: "shotsOnTarget", DisplayValue: "5"},
+					{Name: "possessionPct", DisplayValue: "58%"},
 					{Name: "yellowCards", DisplayValue: "2"},
 					{Name: "redCards", DisplayValue: "0"},
 				},
@@ -1712,7 +1747,7 @@ func TestSoccerStateFromSummaryIncludesStatsAndPlayersOnField(t *testing.T) {
 	if got == nil {
 		t.Fatal("soccerStateFromSummary() = nil")
 	}
-	if got.AwayStats.Shots != "11" || got.AwayStats.ShotsOnTarget != "5" || got.HomeStats.RedCards != "1" {
+	if got.AwayStats.Shots != "11" || got.AwayStats.ShotsOnTarget != "5" || got.AwayStats.Possession != "58%" || got.HomeStats.RedCards != "1" {
 		t.Fatalf("soccer stats = %#v / %#v", got.AwayStats, got.HomeStats)
 	}
 	if len(got.Lineup.Away) != 2 {

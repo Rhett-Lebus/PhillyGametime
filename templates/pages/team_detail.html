@@ -34,6 +34,14 @@
           <div class="live-logo">{{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="{{.HomeTeam.City}} {{.HomeTeam.Name}} logo">{{else}}<span>{{.HomeTeam.Abbr}}</span>{{end}}</div>
         </div>
       </div>
+      {{with .Soccer}}{{if and .AwayStats.Possession .HomeStats.Possession}}
+      <div class="soccer-possession" data-soccer-possession style="--away-possession:{{.AwayStats.Possession}}; --home-possession:{{.HomeStats.Possession}}">
+        <small>Possession</small>
+        <div><span>{{$.AwayTeam.Name}}</span><strong data-soccer-possession-value="away">{{.AwayStats.Possession}}</strong></div>
+        <div class="soccer-possession__bar"><span data-soccer-possession-bar="away"></span><span data-soccer-possession-bar="neutral"></span><span data-soccer-possession-bar="home"></span></div>
+        <div><span>{{$.HomeTeam.Name}}</span><strong data-soccer-possession-value="home">{{.HomeStats.Possession}}</strong></div>
+      </div>
+      {{end}}{{end}}
       {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
       {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
     </article>

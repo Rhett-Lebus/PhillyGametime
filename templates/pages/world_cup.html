@@ -3,7 +3,7 @@
   <div class="world-cup-hero__content">
     <p class="eyebrow">Tournament special</p>
     <h1>World Cup Match Center</h1>
-    <p>Live scores, group tables, knockout bracket, upcoming fixtures, and TV / streaming windows in one place.</p>
+    <p>Live scores, group standings, knockout bracket, upcoming matches, and TV / streaming info in one place.</p>
     <button type="button" class="world-cup-bracket-open" data-world-cup-bracket-open>View Bracket</button>
   </div>
   <div class="world-cup-hero__badge" aria-hidden="true">
@@ -62,7 +62,7 @@
 
 <section class="world-cup-tabs" data-world-cup-tabs>
   <div class="world-cup-tablist" role="tablist" aria-label="World Cup sections">
-    <button type="button" class="world-cup-tab active" id="world-cup-tab-live" role="tab" aria-selected="true" aria-controls="world-cup-panel-live" data-world-cup-tab="live">Live</button>
+    <button type="button" class="world-cup-tab active" id="world-cup-tab-live" role="tab" aria-selected="true" aria-controls="world-cup-panel-live" data-world-cup-tab="live">Live and Recent</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-upcoming" role="tab" aria-selected="false" aria-controls="world-cup-panel-upcoming" data-world-cup-tab="upcoming">Upcoming</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-standings" role="tab" aria-selected="false" aria-controls="world-cup-panel-standings" data-world-cup-tab="standings">Standings</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-watch" role="tab" aria-selected="false" aria-controls="world-cup-panel-watch" data-world-cup-tab="watch">Watch</button>
@@ -82,6 +82,19 @@
         <p class="world-cup-empty">No World Cup matches are live right now.</p>
       {{end}}
     </div>
+    {{if .Cup.Recent}}
+    <div class="world-cup-panel__head world-cup-panel__head--recap">
+      <div>
+        <p class="eyebrow">Last 36 hours</p>
+        <h2>Game Recap</h2>
+      </div>
+    </div>
+    <div class="world-cup-match-list world-cup-match-list--compact world-cup-match-list--dense world-cup-match-list--recent">
+      {{range .Cup.Recent}}
+        {{template "world_cup_match" .}}
+      {{end}}
+    </div>
+    {{end}}
   </section>
 
   <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-upcoming" role="tabpanel" aria-labelledby="world-cup-tab-upcoming" data-world-cup-panel="upcoming" hidden>
@@ -192,13 +205,13 @@
 {{end}}
 
 {{define "world_cup_match"}}
-<article class="world-cup-match {{if eq .Status "Live"}}world-cup-match--live{{end}}" data-world-cup-match="{{.ID}}" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
+<article class="world-cup-match {{if eq .Status "Live"}}world-cup-match--live{{end}}" data-world-cup-match="{{.ID}}" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}; --winner-color:{{if and (eq .Status "Final") (gt .AwayScore .HomeScore)}}{{.AwayTeam.Primary}}{{else if and (eq .Status "Final") (gt .HomeScore .AwayScore)}}{{.HomeTeam.Primary}}{{else}}{{.HomeTeam.Primary}}{{end}}">
   <div class="world-cup-match__meta">
     <span>{{.Stage}}</span>
-    <strong data-world-cup-status>{{if eq .Status "Live"}}Live{{else}}{{formatDateTime .StartTime}}{{end}}</strong>
+    <strong data-world-cup-status>{{if eq .Status "Live"}}Live{{else if eq .Status "Final"}}Final{{else}}{{formatDateTime .StartTime}}{{end}}</strong>
   </div>
   <div class="world-cup-match__teams">
-    <div data-world-cup-side="away">
+    <div data-world-cup-side="away" class="{{if and (eq .Status "Final") (gt .AwayScore .HomeScore)}}world-cup-team-row--winner{{end}}">
       <span class="world-cup-flag" aria-hidden="true">
         {{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="">{{else}}{{.AwayTeam.Abbr}}{{end}}
       </span>
@@ -215,7 +228,7 @@
       </span>
       <strong data-world-cup-score="away" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.AwayScore}}</strong>
     </div>
-    <div data-world-cup-side="home">
+    <div data-world-cup-side="home" class="{{if and (eq .Status "Final") (gt .HomeScore .AwayScore)}}world-cup-team-row--winner{{end}}">
       <span class="world-cup-flag" aria-hidden="true">
         {{if .HomeTeam.LogoURL}}<img src="{{.HomeTeam.LogoURL}}" alt="">{{else}}{{.HomeTeam.Abbr}}{{end}}
       </span>
@@ -233,12 +246,26 @@
       <strong data-world-cup-score="home" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.HomeScore}}</strong>
     </div>
   </div>
+  {{if eq .Status "Live"}}{{with .Soccer}}{{if and .AwayStats.Possession .HomeStats.Possession}}
+  <div class="soccer-possession soccer-possession--world-cup" data-soccer-possession style="--away-possession:{{.AwayStats.Possession}}; --home-possession:{{.HomeStats.Possession}}">
+    <small>Possession</small>
+    <div><span>{{$.AwayTeam.Name}}</span><strong data-soccer-possession-value="away">{{.AwayStats.Possession}}</strong></div>
+    <div class="soccer-possession__bar"><span data-soccer-possession-bar="away"></span><span data-soccer-possession-bar="neutral"></span><span data-soccer-possession-bar="home"></span></div>
+    <div><span>{{$.HomeTeam.Name}}</span><strong data-soccer-possession-value="home">{{.HomeStats.Possession}}</strong></div>
+  </div>
+  {{end}}{{end}}{{end}}
+  {{if .Bullets}}
+  <ul class="world-cup-match__bullets">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>
+  {{else if .Summary}}
+  <p class="world-cup-match__summary">{{.Summary}}</p>
+  {{end}}
+  {{template "recent_highlights" .}}
   <div class="world-cup-match__foot">
     <span>{{if .Venue}}{{.Venue}}{{if .City}}, {{.City}}{{end}}{{else}}{{.City}}{{end}}</span>
     <div>
       {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
     </div>
   </div>
-  {{if .Soccer}}<button type="button" class="lineup-button lineup-button--light lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">Lineup</button>{{end}}
+  {{if .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">View Lineup</button>{{end}}
 </article>
 {{end}}

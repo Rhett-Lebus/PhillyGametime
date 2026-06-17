@@ -451,10 +451,19 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 				StartTime: DatePhilly(now.Year(), now.Month(), now.Day(), 15, 0, 0),
 				Venue:     "Estadio Banorte", City: "Mexico City", Broadcast: []string{"FOX", "Tele", "Peacock"},
 				Soccer: &models.SoccerState{
-					AwayStats: models.SoccerTeamStats{Shots: "5", ShotsOnTarget: "2", YellowCards: "1", RedCards: "0"},
-					HomeStats: models.SoccerTeamStats{Shots: "8", ShotsOnTarget: "4", YellowCards: "0", RedCards: "0"},
+					AwayStats: models.SoccerTeamStats{Shots: "5", ShotsOnTarget: "2", YellowCards: "1"},
+					HomeStats: models.SoccerTeamStats{Shots: "8", ShotsOnTarget: "4"},
 					Lineup:    mockSoccerLineupFor(southAfrica, mexico),
 				},
+			},
+		},
+		Recent: []models.WorldCupMatch{
+			{
+				ID: "mock-wc-recent-1", Stage: "Group Stage", HomeTeam: usa, AwayTeam: canada,
+				HomeScore: 2, AwayScore: 1, Status: models.StatusFinal, StartTime: now.Add(-6 * time.Hour),
+				Venue: "Lincoln Financial Field", City: "Philadelphia", Broadcast: []string{"FOX"},
+				Summary: "USA beat Canada 2-1 behind a late winner in Philadelphia.",
+				Bullets: []string{"USA found a late winner in Philadelphia.", "Canada stayed close in a one-goal finish."},
 			},
 		},
 		Upcoming: []models.WorldCupMatch{

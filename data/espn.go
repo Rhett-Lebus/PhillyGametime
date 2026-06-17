@@ -459,6 +459,7 @@ type gameRecapFacts struct {
 	City               string
 	RawSummary         string
 	HasProviderSummary bool
+	NeutralMatch       bool
 }
 
 type openAIResponse struct {
@@ -763,7 +764,7 @@ func (s *ESPNStore) GetTodaysGames() []models.Game {
 	ttl := 60 * time.Second
 	for _, g := range games {
 		if g.Status == models.StatusLive {
-			ttl = 30 * time.Second
+			ttl = 15 * time.Second
 			break
 		}
 	}
@@ -1534,7 +1535,8 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	}
 	applyWorldCupBracketLayout(&cup)
 
-	start := now.AddDate(0, 0, -1).Format("20060102")
+	recentCutoff := now.Add(-36 * time.Hour)
+	start := recentCutoff.Format("20060102")
 	end := now.AddDate(0, 0, 10).Format("20060102")
 	matches := s.fetchWorldCupMatches(start + "-" + end)
 	for _, match := range matches {
@@ -1544,6 +1546,9 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 		switch {
 		case match.Status == models.StatusLive:
 			cup.Live = append(cup.Live, match)
+		case match.Status == models.StatusFinal && !PhillyTime(match.StartTime).Before(recentCutoff):
+			match = s.enhanceWorldCupRecentMatch(match)
+			cup.Recent = append(cup.Recent, match)
 		case match.Status == models.StatusScheduled && !PhillyTime(match.StartTime).Before(now):
 			cup.Upcoming = append(cup.Upcoming, match)
 		}
@@ -1551,16 +1556,22 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	sort.Slice(cup.Live, func(i, j int) bool {
 		return cup.Live[i].StartTime.Before(cup.Live[j].StartTime)
 	})
+	sort.Slice(cup.Recent, func(i, j int) bool {
+		return cup.Recent[i].StartTime.After(cup.Recent[j].StartTime)
+	})
 	sort.Slice(cup.Upcoming, func(i, j int) bool {
 		return cup.Upcoming[i].StartTime.Before(cup.Upcoming[j].StartTime)
 	})
+	if len(cup.Recent) > 12 {
+		cup.Recent = cup.Recent[:12]
+	}
 	if len(cup.Upcoming) > 12 {
 		cup.Upcoming = cup.Upcoming[:12]
 	}
 
-	ttl := 10 * time.Minute
+	ttl := 2 * time.Minute
 	if len(cup.Live) > 0 || hasWorldCupMatchNearLiveWindow(matches, now) {
-		ttl = 30 * time.Second
+		ttl = 15 * time.Second
 	}
 	s.mu.Lock()
 	s.worldCupCache = worldCupCache{cup: cup, expiresAt: time.Now().Add(ttl)}
@@ -1630,6 +1641,7 @@ func (s *ESPNStore) fetchWorldCupGroups() []models.WorldCupGroup {
 		for _, entry := range child.Standings.Entries {
 			rows = append(rows, worldCupStandingFromEntry(entry))
 		}
+		sortWorldCupStandings(rows)
 		groups = append(groups, models.WorldCupGroup{Name: child.Name, Rows: rows})
 	}
 	return groups
@@ -1682,6 +1694,7 @@ func worldCupMatchFromEvent(ev espnEvent) (models.WorldCupMatch, bool) {
 	if !ok {
 		return models.WorldCupMatch{}, false
 	}
+	summary := worldCupMatchSummary(ev, game)
 	return models.WorldCupMatch{
 		ID:        game.ID,
 		Stage:     worldCupStageLabel(firstNonEmpty(ev.Season.Name, ev.Season.Slug)),
@@ -1696,7 +1709,139 @@ func worldCupMatchFromEvent(ev espnEvent) (models.WorldCupMatch, bool) {
 		Venue:     game.Venue,
 		City:      game.City,
 		Broadcast: game.Broadcast,
+		Summary:   summary,
+		Bullets:   worldCupMatchBullets(summary),
 	}, true
+}
+
+func (s *ESPNStore) enhanceWorldCupRecentMatch(match models.WorldCupMatch) models.WorldCupMatch {
+	match = s.attachWorldCupHighlights(match)
+	if match.ID == "" || strings.TrimSpace(match.Summary) == "" {
+		return match
+	}
+	cacheKey := "world-cup:" + match.ID
+	facts := worldCupRecapFacts(match)
+	if len(match.Bullets) == 0 {
+		match.Bullets = worldCupMatchBullets(match.Summary)
+	}
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		return match
+	}
+	if cached, ok := s.cachedAIRecap(cacheKey); ok {
+		log.Printf("AI recap cache hit for World Cup match %s", match.ID)
+		return applyAIRecapToWorldCupMatch(match, cached)
+	}
+	go s.generateAndCacheAIRecap(cacheKey, facts)
+	return match
+}
+
+func (s *ESPNStore) attachWorldCupHighlights(match models.WorldCupMatch) models.WorldCupMatch {
+	if match.ID == "" {
+		return match
+	}
+	key := "world-cup:" + match.ID
+	now := time.Now()
+	s.mu.Lock()
+	entry, ok := s.highlights[key]
+	if ok && now.Before(entry.NextFetchAt) {
+		match.Highlights = entry.Highlights
+		match.HighlightsPending = entry.Pending
+		s.mu.Unlock()
+		return match
+	}
+	if ok && len(entry.Highlights) == 0 && !entry.Pending && !entry.StopAfter.IsZero() && now.After(entry.StopAfter) {
+		s.mu.Unlock()
+		return match
+	}
+	s.mu.Unlock()
+
+	highlights := s.fetchESPNHighlights(sportCfg{Sport: models.FIFA, SummaryURL: worldCupSummaryURL}, match.ID)
+
+	s.mu.Lock()
+	if len(highlights) == 0 && ok && len(entry.Highlights) > 0 {
+		entry = refreshedHighlightsCacheEntry(entry, match.StartTime, now)
+	} else {
+		entry = newHighlightsCacheEntry(highlights, match.StartTime, now)
+	}
+	s.highlights[key] = entry
+	saveErr := s.saveHighlightCacheLocked()
+	s.mu.Unlock()
+	if saveErr != nil {
+		log.Printf("World Cup highlight cache save failed for match %s: %v", match.ID, saveErr)
+	}
+	match.Highlights = entry.Highlights
+	match.HighlightsPending = entry.Pending
+	return match
+}
+
+func worldCupRecapFacts(match models.WorldCupMatch) gameRecapFacts {
+	team, opponent := match.HomeTeam, match.AwayTeam
+	teamScore, opponentScore := match.HomeScore, match.AwayScore
+	result := "W"
+	if match.AwayScore > match.HomeScore {
+		team, opponent = match.AwayTeam, match.HomeTeam
+		teamScore, opponentScore = match.AwayScore, match.HomeScore
+	} else if match.HomeScore == match.AwayScore {
+		result = "T"
+	}
+	return gameRecapFacts{
+		Sport:              models.FIFA,
+		PhillyTeam:         team,
+		Opponent:           opponent,
+		Home:               team.ID == match.HomeTeam.ID,
+		PhillyScore:        teamScore,
+		OppScore:           opponentScore,
+		Result:             result,
+		GameDate:           match.StartTime,
+		Venue:              match.Venue,
+		City:               match.City,
+		RawSummary:         match.Summary,
+		HasProviderSummary: strings.TrimSpace(match.Summary) != "",
+		NeutralMatch:       true,
+	}
+}
+
+func applyAIRecapToWorldCupMatch(match models.WorldCupMatch, recap aiGameRecap) models.WorldCupMatch {
+	bullets := cleanAIBullets(recap.Bullets)
+	if len(bullets) > 0 {
+		match.Bullets = bullets
+	}
+	return match
+}
+
+func worldCupMatchSummary(ev espnEvent, game models.Game) string {
+	if len(ev.Competitions) > 0 {
+		for _, headline := range ev.Competitions[0].Headlines {
+			if summary := cleanRecapText(headline.Description); summary != "" {
+				return summary
+			}
+			if summary := cleanRecapText(headline.ShortLinkText); summary != "" {
+				return summary
+			}
+		}
+	}
+	if game.Status != models.StatusFinal {
+		return ""
+	}
+
+	winner, loser := game.HomeTeam, game.AwayTeam
+	winnerScore, loserScore := game.HomeScore, game.AwayScore
+	if game.AwayScore > game.HomeScore {
+		winner, loser = game.AwayTeam, game.HomeTeam
+		winnerScore, loserScore = game.AwayScore, game.HomeScore
+	}
+	if game.HomeScore == game.AwayScore {
+		return fmt.Sprintf("%s and %s finished level %d-%d.", game.AwayTeam.Name, game.HomeTeam.Name, game.AwayScore, game.HomeScore)
+	}
+	return fmt.Sprintf("%s beat %s %d-%d.", winner.Name, loser.Name, winnerScore, loserScore)
+}
+
+func worldCupMatchBullets(summary string) []string {
+	summary = cleanRecapText(summary)
+	if summary == "" {
+		return nil
+	}
+	return []string{ensurePeriod(summary)}
 }
 
 func worldCupStandingFromEntry(entry espnStandingsEntry) models.WorldCupStanding {
@@ -1729,6 +1874,45 @@ func worldCupStandingDisplay(entry espnStandingsEntry, names ...string) string {
 		}
 	}
 	return "0"
+}
+
+func sortWorldCupStandings(rows []models.WorldCupStanding) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if av, bv := standingInt(a.Points), standingInt(b.Points); av != bv {
+			return av > bv
+		}
+		if av, bv := standingInt(a.Diff), standingInt(b.Diff); av != bv {
+			return av > bv
+		}
+		if av, bv := standingInt(a.For), standingInt(b.For); av != bv {
+			return av > bv
+		}
+		if av, bv := standingInt(a.Wins), standingInt(b.Wins); av != bv {
+			return av > bv
+		}
+		return strings.Compare(worldCupStandingTeamName(a.Team), worldCupStandingTeamName(b.Team)) < 0
+	})
+}
+
+func standingInt(value string) int {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "+", ""))
+	if value == "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(value)
+	return n
+}
+
+func worldCupStandingTeamName(team models.Team) string {
+	name := strings.TrimSpace(team.Name)
+	if name == "" {
+		name = strings.TrimSpace(team.City)
+	}
+	if name == "" {
+		name = strings.TrimSpace(team.Abbr)
+	}
+	return strings.ToLower(name)
 }
 
 func worldCupStageLabel(stage string) string {
@@ -2276,27 +2460,35 @@ func preferredMLBHighlightItems(items []mlbContentItem) []mlbContentItem {
 	if len(items) == 0 {
 		return nil
 	}
-	for _, item := range items {
-		if isMLBGameRecap(item) && isShortMLBRecapDuration(item.Duration) {
-			return []mlbContentItem{item}
-		}
+	if item, ok := longestMLBItem(items, func(item mlbContentItem) bool {
+		return isMLBNonRecapHighlight(item) && !isTinyMLBClip(item.Duration)
+	}); ok {
+		return []mlbContentItem{item}
 	}
-	for _, item := range items {
-		if isMLBGameRecap(item) && !isTinyMLBClip(item.Duration) {
-			return []mlbContentItem{item}
-		}
+	if item, ok := longestMLBItem(items, func(item mlbContentItem) bool {
+		return isMLBCondensedGame(item) && !isTinyMLBClip(item.Duration)
+	}); ok {
+		return []mlbContentItem{item}
 	}
-	for _, item := range items {
-		if isMLBCondensedGame(item) {
-			return []mlbContentItem{item}
-		}
+	if item, ok := longestMLBItem(items, func(item mlbContentItem) bool {
+		return isMLBGameRecap(item) && !isTinyMLBClip(item.Duration)
+	}); ok {
+		return []mlbContentItem{item}
 	}
-	return []mlbContentItem{items[0]}
+	return []mlbContentItem{longestMLBItemFallback(items)}
 }
 
 func isMLBCondensedGame(item mlbContentItem) bool {
 	text := mlbHighlightSearchText(item)
 	return strings.Contains(text, "condensed game")
+}
+
+func isMLBNonRecapHighlight(item mlbContentItem) bool {
+	text := mlbHighlightSearchText(item)
+	return !strings.Contains(text, "recap") &&
+		(strings.Contains(text, "game highlights") ||
+			strings.Contains(text, "highlights") ||
+			strings.Contains(text, "highlight"))
 }
 
 func isMLBGameRecap(item mlbContentItem) bool {
@@ -2316,17 +2508,35 @@ func mlbHighlightSearchText(item mlbContentItem) string {
 	}, " "))
 }
 
-func isShortMLBRecapDuration(duration string) bool {
-	seconds, ok := parseProviderDuration(duration)
-	if !ok {
-		return true
-	}
-	return seconds >= 60 && seconds <= 6*60
-}
-
 func isTinyMLBClip(duration string) bool {
 	seconds, ok := parseProviderDuration(duration)
 	return ok && seconds > 0 && seconds < 45
+}
+
+func longestMLBItem(items []mlbContentItem, include func(mlbContentItem) bool) (mlbContentItem, bool) {
+	var best mlbContentItem
+	bestSeconds := -1
+	for _, item := range items {
+		if !include(item) {
+			continue
+		}
+		seconds, ok := parseProviderDuration(item.Duration)
+		if !ok {
+			seconds = 0
+		}
+		if seconds > bestSeconds {
+			best = item
+			bestSeconds = seconds
+		}
+	}
+	return best, bestSeconds >= 0
+}
+
+func longestMLBItemFallback(items []mlbContentItem) mlbContentItem {
+	if item, ok := longestMLBItem(items, func(mlbContentItem) bool { return true }); ok {
+		return item
+	}
+	return mlbContentItem{}
 }
 
 func parseProviderDuration(duration string) (int, bool) {
@@ -3030,6 +3240,12 @@ func gameRecapPrompt(facts gameRecapFacts) string {
 	if !facts.Home {
 		location = "road"
 	}
+	teamLabel := "Philadelphia team"
+	resultLabel := "Result for Philadelphia"
+	if facts.NeutralMatch {
+		teamLabel = "Featured team"
+		resultLabel = "Result for featured team"
+	}
 	return fmt.Sprintf(`You are formatting a sports game headline for a website.
 
 The website already displays:
@@ -3063,9 +3279,9 @@ Headline:
 
 Facts:
 Sport: %s
-Philadelphia team: %s %s
+%s: %s %s
 Opponent: %s %s
-Result for Philadelphia: %s
+%s: %s
 Score: %s %d, %s %d
 Game location: %s
 Venue: %s
@@ -3074,10 +3290,12 @@ Date: %s
 Provider description: %s
 `,
 		facts.Sport,
+		teamLabel,
 		facts.PhillyTeam.City,
 		facts.PhillyTeam.Name,
 		facts.Opponent.City,
 		facts.Opponent.Name,
+		resultLabel,
 		facts.Result,
 		facts.PhillyTeam.Name,
 		facts.PhillyScore,
@@ -3383,12 +3601,39 @@ func soccerTeamStats(teams []espnBoxscoreTeamStats, homeAway string, fallback mo
 			return models.SoccerTeamStats{
 				Shots:         espnStatDisplay(team.Statistics, "totalShots"),
 				ShotsOnTarget: espnStatDisplay(team.Statistics, "shotsOnTarget"),
-				YellowCards:   espnStatDisplay(team.Statistics, "yellowCards"),
-				RedCards:      espnStatDisplay(team.Statistics, "redCards"),
+				Possession:    soccerPossessionDisplay(team.Statistics),
+				YellowCards:   espnPositiveStatDisplay(team.Statistics, "yellowCards"),
+				RedCards:      espnPositiveStatDisplay(team.Statistics, "redCards"),
 			}
 		}
 	}
 	return models.SoccerTeamStats{}
+}
+
+func soccerPossessionDisplay(stats []espnStat) string {
+	value := strings.TrimSpace(espnStatDisplay(stats, "possessionPct", "possession", "possessionPercentage"))
+	if value == "" {
+		return ""
+	}
+	if strings.Contains(value, "%") {
+		return value
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return value
+	}
+	return fmt.Sprintf("%.0f%%", n)
+}
+
+func espnPositiveStatDisplay(stats []espnStat, names ...string) string {
+	value := espnStatDisplay(stats, names...)
+	if value == "" {
+		return ""
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n <= 0 {
+		return ""
+	}
+	return value
 }
 
 func espnStatDisplay(stats []espnStat, names ...string) string {
@@ -3484,8 +3729,8 @@ func hasSoccerStats(state *models.SoccerState) bool {
 		return false
 	}
 	for _, stat := range []string{
-		state.AwayStats.Shots, state.AwayStats.ShotsOnTarget, state.AwayStats.YellowCards, state.AwayStats.RedCards,
-		state.HomeStats.Shots, state.HomeStats.ShotsOnTarget, state.HomeStats.YellowCards, state.HomeStats.RedCards,
+		state.AwayStats.Shots, state.AwayStats.ShotsOnTarget, state.AwayStats.Possession, state.AwayStats.YellowCards, state.AwayStats.RedCards,
+		state.HomeStats.Shots, state.HomeStats.ShotsOnTarget, state.HomeStats.Possession, state.HomeStats.YellowCards, state.HomeStats.RedCards,
 	} {
 		if strings.TrimSpace(stat) != "" {
 			return true
@@ -4118,6 +4363,10 @@ func worldCupFlagCode(value string) string {
 		return "ci"
 	case "COL":
 		return "co"
+	case "COD":
+		return "cd"
+	case "CGO":
+		return "cg"
 	case "CPV":
 		return "cv"
 	case "CRC":
@@ -4150,6 +4399,8 @@ func worldCupFlagCode(value string) string {
 		return "hn"
 	case "IRN":
 		return "ir"
+	case "IRQ":
+		return "iq"
 	case "ITA":
 		return "it"
 	case "JAM":
@@ -4224,6 +4475,8 @@ func worldCupFlagCode(value string) string {
 		"CANADA":                 "ca",
 		"CAPE VERDE":             "cv",
 		"COLOMBIA":               "co",
+		"CONGO":                  "cg",
+		"CONGO DR":               "cd",
 		"COSTA RICA":             "cr",
 		"CROATIA":                "hr",
 		"CURACAO":                "cw",
@@ -4238,6 +4491,7 @@ func worldCupFlagCode(value string) string {
 		"HAITI":                  "ht",
 		"HONDURAS":               "hn",
 		"IRAN":                   "ir",
+		"IRAQ":                   "iq",
 		"ITALY":                  "it",
 		"IVORY COAST":            "ci",
 		"JAMAICA":                "jm",
@@ -4258,16 +4512,18 @@ func worldCupFlagCode(value string) string {
 		"SERBIA":                 "rs",
 		"SOUTH AFRICA":           "za",
 		"SOUTH KOREA":            "kr",
-		"SPAIN":                  "es",
-		"SWEDEN":                 "se",
-		"SWITZERLAND":            "ch",
-		"TUNISIA":                "tn",
-		"TURKEY":                 "tr",
-		"UKRAINE":                "ua",
-		"UNITED STATES":          "us",
-		"URUGUAY":                "uy",
-		"UZBEKISTAN":             "uz",
-		"WALES":                  "gb-wls",
+		"DR CONGO":                       "cd",
+		"DEMOCRATIC REPUBLIC OF CONGO":   "cd",
+		"SPAIN":                          "es",
+		"SWEDEN":                         "se",
+		"SWITZERLAND":                    "ch",
+		"TUNISIA":                        "tn",
+		"TURKEY":                         "tr",
+		"UKRAINE":                        "ua",
+		"UNITED STATES":                  "us",
+		"URUGUAY":                        "uy",
+		"UZBEKISTAN":                     "uz",
+		"WALES":                          "gb-wls",
 	}[key]; ok {
 		return code
 	}

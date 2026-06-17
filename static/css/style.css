@@ -522,6 +522,44 @@ a { color: inherit; text-decoration: none; }
   min-width: 0;
   overflow: visible;
 }
+.home-soccer-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  border-left: 4px solid #22c55e;
+  border-radius: 7px;
+  background:
+    linear-gradient(90deg, rgba(34,197,94,.16), transparent 48%),
+    var(--soft-panel);
+}
+.home-soccer-alert > div {
+  min-width: 0;
+}
+.home-soccer-alert h2 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.home-soccer-alert a {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border-radius: 5px;
+  color: #04111f;
+  background: #72f0b4;
+  font-size: 12px;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .main-content,
 .sidebar,
 .sidebar-section {
@@ -709,6 +747,10 @@ a { color: inherit; text-decoration: none; }
   color: #fff;
   font-size: 10px;
   font-weight: 1000;
+}
+.live-soccer-stats span:has([data-soccer-card]:empty),
+.world-cup-team-stats span:has([data-soccer-card]:empty) {
+  display: none;
 }
 .live-vs {
   position: absolute;
@@ -903,6 +945,69 @@ a { color: inherit; text-decoration: none; }
   color: #fff;
   background: #e11d48;
 }
+.soccer-possession {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03)),
+    rgba(2,6,12,.22);
+}
+.soccer-possession > small {
+  color: rgba(255,255,255,.62);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.soccer-possession > div:not(.soccer-possession__bar) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: rgba(255,255,255,.72);
+  font-size: 10px;
+  font-weight: 850;
+}
+.soccer-possession > div:not(.soccer-possession__bar) span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.soccer-possession strong {
+  flex: 0 0 auto;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 950;
+}
+.soccer-possession__bar {
+  display: flex;
+  height: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+.soccer-possession__bar [data-soccer-possession-bar="away"] {
+  flex: 0 1 var(--away-possession, 50%);
+  background: linear-gradient(90deg, var(--away-color, #72f0b4), color-mix(in srgb, var(--away-color, #72f0b4) 64%, #fff));
+}
+.soccer-possession__bar [data-soccer-possession-bar="neutral"] {
+  flex: 1 1 0;
+  min-width: 0;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 4px, rgba(255,255,255,.06) 4px 8px),
+    rgba(255,255,255,.12);
+}
+.soccer-possession__bar [data-soccer-possession-bar="home"] {
+  flex: 0 1 var(--home-possession, 50%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--home-color, #e81828) 64%, #fff), var(--home-color, #e81828));
+}
 .vs-divider { color: rgba(255,255,255,.54); font-weight: 900; }
 .team-badge {
   width: 50px;
@@ -1004,7 +1109,7 @@ a { color: inherit; text-decoration: none; }
   z-index: 1000;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 28px;
 }
 .lineup-modal__backdrop {
   position: absolute;
@@ -1015,9 +1120,10 @@ a { color: inherit; text-decoration: none; }
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(720px, 100%);
-  height: auto;
-  max-height: min(760px, calc(100vh - 36px));
+  width: min(1080px, calc(100vw - 56px));
+  height: calc(100vh - 56px);
+  min-height: 0;
+  max-height: calc(100vh - 56px);
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.16);
   border-radius: 6px;
@@ -1073,11 +1179,14 @@ a { color: inherit; text-decoration: none; }
 .lineup-modal__body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  align-items: start;
+  gap: 16px;
   padding: 16px;
 }
 .lineup-pitchers {
@@ -1125,6 +1234,7 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 9px;
 }
 .lineup-team {
+  align-self: start;
   min-width: 0;
   overflow: hidden;
   padding: 0 10px 10px;
@@ -1166,6 +1276,191 @@ a { color: inherit; text-decoration: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.lineup-field {
+  margin: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 6px;
+  background: rgba(2,6,12,.22);
+}
+.lineup-soccer-pitch {
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 10px;
+  min-height: 340px;
+  padding: 18px 14px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px) 50% 0 / 1px 100% no-repeat,
+    radial-gradient(circle at 50% 50%, transparent 0 31px, rgba(255,255,255,.2) 32px 33px, transparent 34px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 46px, transparent 46px 92px),
+    linear-gradient(180deg, rgba(255,255,255,.1), transparent 28%, transparent 72%, rgba(255,255,255,.1)),
+    linear-gradient(145deg, color-mix(in srgb, var(--lineup-team-color, #0f9f6e) 34%, #07351f), #0d3a25 55%, #082819);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), inset 0 -34px 80px rgba(0,0,0,.18);
+}
+.lineup-soccer-pitch > * {
+  position: relative;
+  z-index: 1;
+}
+.lineup-soccer-pitch::before,
+.lineup-soccer-pitch::after {
+  content: "";
+  position: absolute;
+  left: 24%;
+  right: 24%;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.08),
+    inset 0 0 24px rgba(255,255,255,.04);
+}
+.lineup-soccer-pitch::before {
+  top: 0;
+  border-top: 0;
+}
+.lineup-soccer-pitch::after {
+  bottom: 0;
+  border-bottom: 0;
+}
+.lineup-soccer-pitch .lineup-soccer-line:first-child::before,
+.lineup-soccer-pitch .lineup-soccer-line:last-child::after {
+  content: "";
+  position: absolute;
+  left: 44%;
+  right: 44%;
+  height: 14px;
+  border: 1px solid rgba(255,255,255,.18);
+}
+.lineup-soccer-pitch .lineup-soccer-line:first-child::before {
+  top: -18px;
+  border-top: 0;
+}
+.lineup-soccer-pitch .lineup-soccer-line:last-child::after {
+  bottom: -18px;
+  border-bottom: 0;
+}
+.lineup-soccer-line {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  justify-content: space-evenly;
+  gap: 10px;
+  min-width: 0;
+}
+.lineup-field-player {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  max-width: 112px;
+  min-width: 74px;
+  padding: 6px 7px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 5px;
+  color: #fff;
+  background: rgba(2,6,12,.58);
+  box-shadow: 0 3px 8px rgba(0,0,0,.18);
+}
+.lineup-soccer-pitch .lineup-field-player {
+  flex: 0 1 min(132px, calc((100% - 30px) / var(--lineup-line-count, 4)));
+  max-width: 132px;
+  min-width: 72px;
+  border-color: rgba(255,255,255,.24);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.11), transparent 42%),
+    rgba(5,9,14,.72);
+  box-shadow: 0 8px 16px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.lineup-soccer-line--dense {
+  gap: 6px;
+}
+.lineup-soccer-line--dense .lineup-field-player {
+  flex-basis: min(108px, calc((100% - 24px) / var(--lineup-line-count, 5)));
+  max-width: 108px;
+  padding-inline: 5px;
+}
+.lineup-field-player small {
+  color: rgba(255,255,255,.62);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+}
+.lineup-field-player strong {
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  font-size: 10.5px;
+  font-weight: 850;
+  line-height: 1.12;
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+.lineup-baseball-diamond {
+  position: relative;
+  min-height: 292px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 55%, rgba(255,255,255,.52) 0 3px, transparent 4px),
+    radial-gradient(circle at 50% 82%, rgba(255,255,255,.7) 0 3px, transparent 4px),
+    radial-gradient(circle at 72% 52%, rgba(255,255,255,.62) 0 3px, transparent 4px),
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,.62) 0 3px, transparent 4px),
+    radial-gradient(circle at 28% 52%, rgba(255,255,255,.62) 0 3px, transparent 4px),
+    linear-gradient(45deg, transparent 46%, rgba(255,255,255,.22) 46.5% 47.5%, transparent 48%) 50% 56% / 170px 170px no-repeat,
+    linear-gradient(-45deg, transparent 46%, rgba(255,255,255,.22) 46.5% 47.5%, transparent 48%) 50% 56% / 170px 170px no-repeat,
+    radial-gradient(ellipse at 50% 58%, rgba(126,82,43,.72) 0 38%, rgba(126,82,43,.36) 39%, transparent 52%),
+    repeating-linear-gradient(105deg, rgba(255,255,255,.035) 0 18px, transparent 18px 36px),
+    linear-gradient(145deg, color-mix(in srgb, var(--lineup-team-color, #0f9f6e) 32%, #0d3a25), #123d2b 58%, #0d2b20);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), inset 0 -34px 80px rgba(0,0,0,.2);
+}
+.lineup-baseball-diamond::before {
+  content: "";
+  position: absolute;
+  inset: 18px 24px;
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 58%, transparent 0 45%, rgba(255,255,255,.12) 45.5% 46.5%, transparent 47%);
+  opacity: .7;
+}
+.lineup-baseball-diamond::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 50%;
+  background: rgba(126,82,43,.85);
+  transform: translate(-50%, -50%);
+}
+.lineup-baseball-diamond .lineup-field-player {
+  position: absolute;
+  z-index: 1;
+  width: 78px;
+  border-color: rgba(255,255,255,.24);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.1), transparent 42%),
+    rgba(5,9,14,.76);
+  box-shadow: 0 8px 16px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12);
+  transform: translate(-50%, -50%);
+}
+.lineup-field-player--p { left: 50%; top: 55%; }
+.lineup-field-player--c { left: 50%; top: 84%; }
+.lineup-field-player--b1 { left: 72%; top: 52%; }
+.lineup-field-player--b2 { left: 62%; top: 35%; }
+.lineup-field-player--ss { left: 38%; top: 35%; }
+.lineup-field-player--b3 { left: 28%; top: 52%; }
+.lineup-field-player--lf { left: 24%; top: 18%; }
+.lineup-field-player--cf { left: 50%; top: 11%; }
+.lineup-field-player--rf { left: 76%; top: 18%; }
+.lineup-field-player--dh { left: 84%; top: 80%; }
 .lineup-list {
   display: grid;
   gap: 7px;
@@ -1284,6 +1579,26 @@ a { color: inherit; text-decoration: none; }
     overflow: visible;
     max-height: none;
     padding: 12px 12px max(18px, env(safe-area-inset-bottom));
+  }
+  .lineup-soccer-pitch,
+  .lineup-baseball-diamond {
+    min-height: 248px;
+  }
+  .lineup-soccer-line {
+    gap: 4px;
+  }
+  .lineup-field-player {
+    min-width: 0;
+    max-width: 68px;
+    padding: 3px 4px;
+  }
+  .lineup-field-player strong {
+    font-size: 8px;
+    -webkit-line-clamp: 1;
+    white-space: nowrap;
+  }
+  .lineup-baseball-diamond .lineup-field-player {
+    width: 66px;
   }
   .lineup-pitchers {
     grid-template-columns: 1fr;
@@ -2476,6 +2791,16 @@ a { color: inherit; text-decoration: none; }
   }
   .theme-picker { margin-left: auto; }
   .home-layout { grid-template-columns: 1fr; }
+  .home-soccer-alert {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 13px;
+  }
+  .home-soccer-alert a {
+    width: 100%;
+    white-space: normal;
+  }
   .team-detail-grid { grid-template-columns: 1fr; }
   .team-hero {
     grid-template-columns: 64px minmax(0, 1fr);
@@ -3200,6 +3525,11 @@ a { color: inherit; text-decoration: none; }
   gap: 12px;
   margin-bottom: 12px;
 }
+.world-cup-panel__head--recap {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.09);
+}
 .world-cup-panel__head h2,
 .world-cup-group h3,
 .world-cup-round h3,
@@ -3223,9 +3553,60 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--line);
   border-left: 4px solid var(--home-color, #0f9f6e);
   border-radius: 7px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--away-color, #0f9f6e) 18%, transparent), transparent 44%),
-    var(--soft-panel);
+  background: var(--soft-panel);
+}
+.world-cup-match-list--recent {
+  gap: 10px;
+}
+.world-cup-match-list--recent .world-cup-match {
+  position: relative;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-left-color: var(--home-color, #0f9f6e);
+  background: var(--soft-panel);
+  box-shadow: 0 1px 5px var(--surface-shadow), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.world-cup-match-list--recent .world-cup-match__meta {
+  color: rgba(226,232,240,.78);
+}
+.world-cup-match-list--recent .world-cup-match__meta strong {
+  color: #fff;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 11px;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.world-cup-match-list--recent .world-cup-match__teams {
+  gap: 7px;
+}
+.world-cup-match-list--recent .world-cup-match__teams > div {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  min-height: 34px;
+}
+.world-cup-match-list--recent .world-cup-team-row--winner {
+  border-color: color-mix(in srgb, var(--winner-color, var(--home-color, #0f9f6e)) 58%, var(--line));
+  background: color-mix(in srgb, var(--winner-color, var(--home-color, #0f9f6e)) 14%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.world-cup-match-list--recent .world-cup-team-name {
+  color: #f8fafc;
+  font-size: 15px;
+}
+.world-cup-match-list--recent .world-cup-match__teams strong {
+  color: #fff;
+  font-size: 18px;
+}
+.world-cup-match-list--recent .world-cup-match__foot {
+  color: rgba(226,232,240,.72);
 }
 .world-cup-match--live {
   box-shadow: inset 0 0 0 1px rgba(18,185,129,.45), 0 0 0 3px rgba(18,185,129,.12);
@@ -3355,6 +3736,47 @@ a { color: inherit; text-decoration: none; }
   align-self: center;
   font-size: 20px;
   line-height: 1;
+}
+.world-cup-match__summary {
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.78);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+.world-cup-match__bullets {
+  margin: 0;
+  padding: 10px 11px;
+  list-style: none;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 5px;
+  background: rgba(2,6,12,.42);
+  color: rgba(248,250,252,.92);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow: hidden;
+}
+.world-cup-match__bullets li {
+  position: relative;
+  padding-left: 14px;
+}
+.world-cup-match__bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--winner-color, var(--home-color, #0f9f6e));
+  box-shadow: 0 0 0 2px rgba(255,255,255,.08);
+}
+.world-cup-match__bullets li + li {
+  margin-top: 9px;
 }
 .world-cup-match__foot {
   align-items: flex-start;

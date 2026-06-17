@@ -1,7 +1,10 @@
 'use strict';
 
 (function () {
-  const POLL_INTERVAL = 30000;
+  const SCORE_LIVE_POLL_INTERVAL = 15 * 1000;
+  const SCORE_IDLE_POLL_INTERVAL = 60 * 1000;
+  const WORLD_CUP_ACTIVE_POLL_INTERVAL = 15 * 1000;
+  const WORLD_CUP_IDLE_POLL_INTERVAL = 2 * 60 * 1000;
   const THEME_KEY = 'phillyGametimeTheme';
   const DEFAULT_THEME = 'neon';
   const LINEUP_PARTIAL_TTL = 2 * 60 * 1000;
@@ -377,8 +380,10 @@
     }
     if (period) {
       if (game.Status === 'Live') {
+        period.hidden = false;
         period.textContent = game.TimeLeft ? `${game.Period} - ${game.TimeLeft}` : game.Period;
       } else if (['Delayed', 'Postponed', 'Cancelled', 'Final'].includes(game.Status) && game.Period) {
+        period.hidden = game.Status === 'Final' && game.Period === 'Final';
         period.textContent = game.Period;
       }
     }
@@ -439,11 +444,28 @@
     return value === undefined || value === null || value === '' ? '-' : value;
   }
 
+  function soccerCardValue(value) {
+    if (value === undefined || value === null) return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    const numeric = Number.parseInt(text, 10);
+    if (Number.isFinite(numeric) && numeric <= 0) return '';
+    return text;
+  }
+
   function updateSoccerPulse(card, soccer) {
     if (!card || !soccer || !card.querySelector('[data-soccer-stat], [data-soccer-card]')) return;
     const setText = (selector, value) => {
       const node = card.querySelector(selector);
       if (node) node.textContent = value;
+    };
+    const setCard = (selector, value) => {
+      const node = card.querySelector(selector);
+      if (!node) return;
+      const text = soccerCardValue(value);
+      node.textContent = text;
+      const wrapper = node.closest('span');
+      if (wrapper) wrapper.hidden = !text;
     };
     const away = soccer.AwayStats || {};
     const home = soccer.HomeStats || {};
@@ -451,10 +473,85 @@
     setText('[data-soccer-stat="home-shots"]', soccerStatValue(home.Shots));
     setText('[data-soccer-stat="away-target"]', soccerStatValue(away.ShotsOnTarget));
     setText('[data-soccer-stat="home-target"]', soccerStatValue(home.ShotsOnTarget));
-    setText('[data-soccer-card="away-yellow"]', soccerStatValue(away.YellowCards));
-    setText('[data-soccer-card="away-red"]', soccerStatValue(away.RedCards));
-    setText('[data-soccer-card="home-yellow"]', soccerStatValue(home.YellowCards));
-    setText('[data-soccer-card="home-red"]', soccerStatValue(home.RedCards));
+    setCard('[data-soccer-card="away-yellow"]', away.YellowCards);
+    setCard('[data-soccer-card="away-red"]', away.RedCards);
+    setCard('[data-soccer-card="home-yellow"]', home.YellowCards);
+    setCard('[data-soccer-card="home-red"]', home.RedCards);
+    updateSoccerPossession(card, soccer);
+  }
+
+  function updateSoccerPossession(card, soccer) {
+    const away = soccer && soccer.AwayStats ? soccer.AwayStats.Possession : '';
+    const home = soccer && soccer.HomeStats ? soccer.HomeStats.Possession : '';
+    let wrap = card.querySelector('[data-soccer-possession]');
+    if (!away || !home) {
+      if (wrap) wrap.remove();
+      return;
+    }
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = card.classList.contains('world-cup-match') ? 'soccer-possession soccer-possession--world-cup' : 'soccer-possession';
+      wrap.setAttribute('data-soccer-possession', '');
+      const label = document.createElement('small');
+      label.textContent = 'Possession';
+      wrap.append(
+        label,
+        soccerPossessionTeamRow(card, 'away'),
+        soccerPossessionBar(),
+        soccerPossessionTeamRow(card, 'home'),
+      );
+      const anchor = card.querySelector('.live-matchup, .world-cup-match__teams');
+      if (anchor) anchor.insertAdjacentElement('afterend', wrap);
+      else card.append(wrap);
+    }
+    wrap.style.setProperty('--away-possession', away);
+    wrap.style.setProperty('--home-possession', home);
+    ensureSoccerPossessionSegments(wrap);
+    const awayValue = wrap.querySelector('[data-soccer-possession-value="away"]');
+    const homeValue = wrap.querySelector('[data-soccer-possession-value="home"]');
+    if (awayValue) awayValue.textContent = away;
+    if (homeValue) homeValue.textContent = home;
+  }
+
+  function soccerPossessionTeamRow(card, side) {
+    const row = document.createElement('div');
+    const name = document.createElement('span');
+    name.textContent = soccerTeamName(card, side);
+    const value = document.createElement('strong');
+    value.setAttribute('data-soccer-possession-value', side);
+    row.append(name, value);
+    return row;
+  }
+
+  function soccerPossessionBar() {
+    const bar = document.createElement('div');
+    bar.className = 'soccer-possession__bar';
+    const away = document.createElement('span');
+    away.setAttribute('data-soccer-possession-bar', 'away');
+    const neutral = document.createElement('span');
+    neutral.setAttribute('data-soccer-possession-bar', 'neutral');
+    const home = document.createElement('span');
+    home.setAttribute('data-soccer-possession-bar', 'home');
+    bar.append(away, neutral, home);
+    return bar;
+  }
+
+  function ensureSoccerPossessionSegments(wrap) {
+    const bar = wrap.querySelector('.soccer-possession__bar');
+    if (!bar || bar.querySelector('[data-soccer-possession-bar="neutral"]')) return;
+    const neutral = document.createElement('span');
+    neutral.setAttribute('data-soccer-possession-bar', 'neutral');
+    const home = bar.querySelector('[data-soccer-possession-bar="home"]');
+    if (home) bar.insertBefore(neutral, home);
+    else bar.append(neutral);
+  }
+
+  function soccerTeamName(card, side) {
+    const liveName = card.querySelector(`.live-team--${side} .live-name`);
+    if (liveName) return Array.from(liveName.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim())?.textContent.trim() || side;
+    const worldCupName = card.querySelector(`[data-world-cup-side="${side}"] .world-cup-team-name`);
+    if (worldCupName && worldCupName.textContent.trim()) return worldCupName.textContent.trim();
+    return side === 'away' ? 'Away' : 'Home';
   }
 
   function scheduleScoreFor(game, phillyHome) {
@@ -576,6 +673,108 @@
     return [list];
   }
 
+  function lineupSport(lineup, team) {
+    return (team && team.Sport) || (lineup && lineup.AwayTeam && lineup.AwayTeam.Sport) || (lineup && lineup.HomeTeam && lineup.HomeTeam.Sport) || '';
+  }
+
+  function isSoccerLineup(lineup, team) {
+    return ['MLS', 'FIFA'].includes(lineupSport(lineup, team));
+  }
+
+  function isBaseballLineup(lineup, team) {
+    return lineupSport(lineup, team) === 'MLB';
+  }
+
+  function playerToken(entry, className = '') {
+    const token = document.createElement('span');
+    token.className = `lineup-field-player${className ? ` ${className}` : ''}`;
+    token.title = [entry.Position, entry.Name].filter(Boolean).join(' - ');
+
+    const pos = document.createElement('small');
+    pos.textContent = entry.Position || '';
+    const name = document.createElement('strong');
+    name.textContent = entry.Name || 'TBD';
+    token.append(pos, name);
+    return token;
+  }
+
+  function soccerLineKey(position) {
+    const pos = String(position || '').toUpperCase();
+    if (['G', 'GK'].includes(pos)) return 'gk';
+    if (['M', 'CM', 'AM', 'DM', 'CDM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'W'].includes(pos)) return 'mid';
+    if (['D', 'DEF', 'CB', 'LCB', 'RCB', 'CD', 'CD-L', 'CD-R', 'LB', 'RB', 'LWB', 'RWB'].includes(pos)) return 'def';
+    if (pos.endsWith('B') || pos.startsWith('CD') || pos.includes('BACK')) return 'def';
+    if (pos.includes('M') || pos === 'W') return 'mid';
+    if (pos.includes('F') || pos.includes('ST') || pos.includes('ATT')) return 'fwd';
+    return 'mid';
+  }
+
+  function renderSoccerField(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const field = document.createElement('div');
+    field.className = 'lineup-field lineup-field--soccer';
+    const pitch = document.createElement('div');
+    pitch.className = 'lineup-soccer-pitch';
+
+    const groups = { fwd: [], mid: [], def: [], gk: [] };
+    entries.slice(0, 11).forEach((entry) => groups[soccerLineKey(entry.Position)].push(entry));
+    [
+      ['fwd', 'Attack'],
+      ['mid', 'Midfield'],
+      ['def', 'Defense'],
+      ['gk', 'Keeper'],
+    ].forEach(([key, label]) => {
+      if (!groups[key].length) return;
+      const line = document.createElement('div');
+      line.className = `lineup-soccer-line lineup-soccer-line--${key}`;
+      if (groups[key].length > 4) line.classList.add('lineup-soccer-line--dense');
+      line.style.setProperty('--lineup-line-count', groups[key].length);
+      line.setAttribute('aria-label', label);
+      groups[key].forEach((entry) => line.append(playerToken(entry)));
+      pitch.append(line);
+    });
+    field.append(pitch);
+    return field;
+  }
+
+  function baseballPositionKey(position) {
+    const pos = String(position || '').toUpperCase();
+    if (pos.includes('P')) return 'p';
+    if (pos === 'C') return 'c';
+    if (pos === '1B') return 'b1';
+    if (pos === '2B') return 'b2';
+    if (pos === '3B') return 'b3';
+    if (pos === 'SS') return 'ss';
+    if (pos === 'LF') return 'lf';
+    if (pos === 'CF') return 'cf';
+    if (pos === 'RF') return 'rf';
+    if (pos === 'DH') return 'dh';
+    return '';
+  }
+
+  function renderBaseballField(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const field = document.createElement('div');
+    field.className = 'lineup-field lineup-field--baseball';
+    const diamond = document.createElement('div');
+    diamond.className = 'lineup-baseball-diamond';
+
+    entries.forEach((entry) => {
+      const key = baseballPositionKey(entry.Position);
+      if (!key) return;
+      diamond.append(playerToken(entry, `lineup-field-player--${key}`));
+    });
+    if (!diamond.children.length) return null;
+    field.append(diamond);
+    return field;
+  }
+
+  function renderLineupField(lineup, team, entries) {
+    if (isSoccerLineup(lineup, team)) return renderSoccerField(entries);
+    if (isBaseballLineup(lineup, team)) return renderBaseballField(entries);
+    return null;
+  }
+
   function pitcherLabel(pitcher) {
     if (!pitcher || !pitcher.Name) return 'TBD';
     const hand = pitcher.Handedness ? ` ${pitcher.Handedness}HP` : '';
@@ -655,6 +854,8 @@
       heading.append(name);
       section.append(heading);
       if (pitcherHasName(pitcher)) section.append(pitcherCard(team, pitcher, 'lineup-pitcher-card--mobile'));
+      const field = renderLineupField(lineup, team, entries);
+      if (field) section.append(field);
       section.append(...lineupRows(entries));
       body.append(section);
     });
@@ -794,6 +995,7 @@
       if (Array.isArray(items)) matches.push(...items);
     };
     add(cup && cup.Live);
+    add(cup && cup.Recent);
     add(cup && cup.Upcoming);
     if (cup && Array.isArray(cup.Bracket)) {
       cup.Bracket.forEach((round) => add(round && round.Matches));
@@ -845,12 +1047,28 @@
     });
   }
 
+  function hasWorldCupActiveWindow(matches) {
+    const now = Date.now();
+    return matches.some((match) => {
+      if (!match) return false;
+      if (match.Status === 'Live') return true;
+      if (match.Status !== 'Scheduled' || !match.StartTime) return false;
+      const start = Date.parse(match.StartTime);
+      if (!Number.isFinite(start)) return false;
+      return now > start - (30 * 60 * 1000) && now < start + (3 * 60 * 60 * 1000);
+    });
+  }
+
   function pollWorldCup() {
-    if (!document.querySelector('[data-world-cup-match]')) return;
-    fetch('/api/world-cup')
+    if (!document.querySelector('[data-world-cup-match]')) return Promise.resolve(WORLD_CUP_IDLE_POLL_INTERVAL);
+    return fetch('/api/world-cup')
       .then((response) => response.ok ? response.json() : Promise.reject(response))
-      .then((cup) => worldCupMatchesFromPayload(cup).forEach(updateWorldCupMatchDOM))
-      .catch(() => {});
+      .then((cup) => {
+        const matches = worldCupMatchesFromPayload(cup);
+        matches.forEach(updateWorldCupMatchDOM);
+        return hasWorldCupActiveWindow(matches) ? WORLD_CUP_ACTIVE_POLL_INTERVAL : WORLD_CUP_IDLE_POLL_INTERVAL;
+      })
+      .catch(() => WORLD_CUP_IDLE_POLL_INTERVAL);
   }
 
   function emit(name, detail) {
@@ -866,14 +1084,27 @@
   }
 
   function pollScores() {
-    fetch('/api/scores')
+    return fetch('/api/scores')
       .then((response) => response.json())
-      .then((games) => games.forEach((game) => {
-        updateCardDOM(game);
-        updateScheduleDOM(game);
-        emit('score_update', game);
-      }))
-      .catch(() => {});
+      .then((games) => {
+        games.forEach((game) => {
+          updateCardDOM(game);
+          updateScheduleDOM(game);
+          emit('score_update', game);
+        });
+        return games.some((game) => game && game.Status === 'Live') ? SCORE_LIVE_POLL_INTERVAL : SCORE_IDLE_POLL_INTERVAL;
+      })
+      .catch(() => SCORE_IDLE_POLL_INTERVAL);
+  }
+
+  function schedulePoll(pollFn, fallbackInterval) {
+    pollFn()
+      .then((interval) => {
+        setTimeout(() => schedulePoll(pollFn, fallbackInterval), interval || fallbackInterval);
+      })
+      .catch(() => {
+        setTimeout(() => schedulePoll(pollFn, fallbackInterval), fallbackInterval);
+      });
   }
 
   function connectEvents() {
@@ -914,10 +1145,8 @@
   initLineupButtons();
   initWorldCupBracketModal();
   initWorldCupTabs();
-  pollWorldCup();
-  setInterval(pollWorldCup, POLL_INTERVAL);
-  pollScores();
-  setInterval(pollScores, POLL_INTERVAL);
+  schedulePoll(pollWorldCup, WORLD_CUP_IDLE_POLL_INTERVAL);
+  schedulePoll(pollScores, SCORE_IDLE_POLL_INTERVAL);
 
   window.PhillyGametime = {
     on(eventName, callback) {

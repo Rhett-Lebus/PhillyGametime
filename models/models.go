@@ -118,6 +118,7 @@ type SoccerState struct {
 type SoccerTeamStats struct {
 	Shots         string
 	ShotsOnTarget string
+	Possession    string
 	YellowCards   string
 	RedCards      string
 }
@@ -169,6 +170,7 @@ type VideoHighlight struct {
 
 type WorldCup struct {
 	Live         []WorldCupMatch
+	Recent       []WorldCupMatch
 	Upcoming     []WorldCupMatch
 	Groups       []WorldCupGroup
 	Bracket      []WorldCupRound
@@ -192,6 +194,10 @@ type WorldCupMatch struct {
 	Venue     string
 	City      string
 	Broadcast []string
+	Summary   string
+	Bullets   []string
+	Highlights []VideoHighlight
+	HighlightsPending bool
 	Soccer    *SoccerState
 }
 
