@@ -1542,6 +1542,10 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	for _, match := range matches {
 		if match.Status == models.StatusLive {
 			match.Soccer = s.fetchSoccerState(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam)
+		} else if shouldPrefetchWorldCupLineup(match, now) {
+			if lineup, ok := s.cachedSoccerLineup(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam); ok {
+				match.Soccer = &models.SoccerState{Lineup: lineup}
+			}
 		}
 		switch {
 		case match.Status == models.StatusLive:
@@ -3753,14 +3757,11 @@ func (s *ESPNStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 		return s.fetchSoccerLineupByID(id)
 	}
 	if isSoccerSport(game.Sport) {
-		if game.Lineup != nil && hasLineupEntries(game.Lineup) {
+		if game.Lineup != nil && hasCompleteLineupEntries(game.Lineup) {
 			return game.Lineup, true
 		}
 		summaryURL := soccerSummaryURLForSport(game.Sport)
-		if state := s.fetchSoccerState(game.ID, summaryURL, game.AwayTeam, game.HomeTeam); state != nil && hasLineupEntries(state.Lineup) {
-			return state.Lineup, true
-		}
-		return nil, false
+		return s.cachedSoccerLineup(game.ID, summaryURL, game.AwayTeam, game.HomeTeam)
 	}
 	if game.Sport != models.MLB {
 		return nil, false
@@ -3775,15 +3776,19 @@ func (s *ESPNStore) fetchSoccerLineupByID(id string) (*models.BaseballLineup, bo
 	if id == "" {
 		return nil, false
 	}
-	for _, match := range s.GetWorldCup().Live {
-		if match.ID == id && match.Soccer != nil && hasLineupEntries(match.Soccer.Lineup) {
-			return match.Soccer.Lineup, true
+	cup := s.GetWorldCup()
+	for _, matches := range [][]models.WorldCupMatch{cup.Live, cup.Upcoming, cup.Recent} {
+		for _, match := range matches {
+			if match.ID != id {
+				continue
+			}
+			if match.Soccer != nil && hasCompleteLineupEntries(match.Soccer.Lineup) {
+				return match.Soccer.Lineup, true
+			}
+			return s.cachedSoccerLineup(id, worldCupSummaryURL, match.AwayTeam, match.HomeTeam)
 		}
 	}
-	if state := s.fetchSoccerState(id, worldCupSummaryURL, models.Team{}, models.Team{}); state != nil && hasLineupEntries(state.Lineup) {
-		return state.Lineup, true
-	}
-	return nil, false
+	return s.cachedSoccerLineup(id, worldCupSummaryURL, models.Team{}, models.Team{})
 }
 
 func soccerSummaryURLForSport(sport models.Sport) string {
@@ -3838,6 +3843,17 @@ func shouldPrefetchLineup(g models.Game, now time.Time) bool {
 	return !start.After(now.Add(lineupPrefetchWindow))
 }
 
+func shouldPrefetchWorldCupLineup(match models.WorldCupMatch, now time.Time) bool {
+	if match.Status != models.StatusScheduled || (match.Soccer != nil && hasCompleteLineupEntries(match.Soccer.Lineup)) {
+		return false
+	}
+	start := PhillyTime(match.StartTime)
+	if start.Before(now) {
+		return false
+	}
+	return !start.After(now.Add(lineupPrefetchWindow))
+}
+
 func isSamePhillyDay(t, ref time.Time) bool {
 	tt := PhillyTime(t)
 	rr := PhillyTime(ref)
@@ -3856,18 +3872,47 @@ func (s *ESPNStore) cachedMLBLineup(game models.Game) (*models.BaseballLineup, b
 	s.mu.RUnlock()
 
 	lineup := s.fetchMLBLineup(game)
-	ttl := 10 * time.Minute
-	if hasCompleteLineupEntries(lineup) {
-		ttl = 12 * time.Hour
-	} else if hasLineupEntries(lineup) {
-		ttl = 2 * time.Minute
-	}
+	ttl := lineupCacheTTL(lineup)
 
 	s.mu.Lock()
 	s.lineupCache[game.ID] = lineupCacheEntry{lineup: lineup, expiresAt: now.Add(ttl)}
 	s.mu.Unlock()
 
 	return lineup, hasLineupEntries(lineup)
+}
+
+func (s *ESPNStore) cachedSoccerLineup(eventID, summaryURL string, awayTeam, homeTeam models.Team) (*models.BaseballLineup, bool) {
+	if eventID == "" || summaryURL == "" {
+		return nil, false
+	}
+	now := time.Now()
+	s.mu.RLock()
+	if cached, ok := s.lineupCache[eventID]; ok && now.Before(cached.expiresAt) {
+		s.mu.RUnlock()
+		return cached.lineup, hasCompleteLineupEntries(cached.lineup)
+	}
+	s.mu.RUnlock()
+
+	var lineup *models.BaseballLineup
+	if state := s.fetchSoccerState(eventID, summaryURL, awayTeam, homeTeam); state != nil {
+		lineup = state.Lineup
+	}
+
+	s.mu.Lock()
+	s.lineupCache[eventID] = lineupCacheEntry{lineup: lineup, expiresAt: now.Add(lineupCacheTTL(lineup))}
+	s.mu.Unlock()
+
+	return lineup, hasCompleteLineupEntries(lineup)
+}
+
+func lineupCacheTTL(lineup *models.BaseballLineup) time.Duration {
+	if hasCompleteLineupEntries(lineup) {
+		return 12 * time.Hour
+	}
+	if hasLineupEntries(lineup) {
+		return 2 * time.Minute
+	}
+	return 10 * time.Minute
 }
 
 func (s *ESPNStore) fetchMLBLineup(g models.Game) *models.BaseballLineup {

@@ -93,7 +93,7 @@ func TestWorldCupPageRenders(t *testing.T) {
 		t.Fatalf("WorldCup() status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"World Cup Match Center", "Live Scores", "How to Watch"} {
+	for _, want := range []string{"World Cup Match Center", "Live Scores", "How to Watch", `data-lineup-game="mock-wc-upcoming-1"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("WorldCup() body missing %q", want)
 		}

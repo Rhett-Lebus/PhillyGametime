@@ -1673,6 +1673,68 @@ func TestHasCompleteLineupEntriesRequiresBothTeams(t *testing.T) {
 	}
 }
 
+func TestShouldPrefetchWorldCupLineupWithinPregameWindow(t *testing.T) {
+	now := DatePhilly(2026, time.June, 18, 12, 0, 0)
+	match := models.WorldCupMatch{
+		Status:    models.StatusScheduled,
+		StartTime: now.Add(90 * time.Minute),
+	}
+	if !shouldPrefetchWorldCupLineup(match, now) {
+		t.Fatal("shouldPrefetchWorldCupLineup() = false, want true inside pregame window")
+	}
+
+	match.StartTime = now.Add(2 * time.Hour)
+	if shouldPrefetchWorldCupLineup(match, now) {
+		t.Fatal("shouldPrefetchWorldCupLineup() = true before pregame window")
+	}
+
+	match.StartTime = now.Add(90 * time.Minute)
+	match.Soccer = &models.SoccerState{Lineup: &models.BaseballLineup{
+		Away: []models.BaseballLineupEntry{{Name: "Away Starter"}},
+		Home: []models.BaseballLineupEntry{{Name: "Home Starter"}},
+	}}
+	if shouldPrefetchWorldCupLineup(match, now) {
+		t.Fatal("shouldPrefetchWorldCupLineup() = true for a complete lineup")
+	}
+}
+
+func TestCachedSoccerLineupRetriesPartialAndCachesComplete(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		request := requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if request == 1 {
+			_, _ = w.Write([]byte(`{"rosters":[{"homeAway":"away","roster":[{"starter":true,"jersey":"10","athlete":{"displayName":"Away Starter"}}]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"rosters":[{"homeAway":"away","roster":[{"starter":true,"jersey":"10","athlete":{"displayName":"Away Starter"}}]},{"homeAway":"home","roster":[{"starter":true,"jersey":"9","athlete":{"displayName":"Home Starter"}}]}]}`))
+	}))
+	defer server.Close()
+
+	store := NewESPNStore()
+	url := server.URL + "/summary?event=%s"
+	if lineup, ok := store.cachedSoccerLineup("world-cup-game", url, models.Team{}, models.Team{}); ok || !hasLineupEntries(lineup) {
+		t.Fatalf("first cachedSoccerLineup() = (%#v, %v), want partial lineup unavailable", lineup, ok)
+	}
+
+	store.mu.Lock()
+	entry := store.lineupCache["world-cup-game"]
+	entry.expiresAt = time.Now().Add(-time.Second)
+	store.lineupCache["world-cup-game"] = entry
+	store.mu.Unlock()
+
+	lineup, ok := store.cachedSoccerLineup("world-cup-game", url, models.Team{}, models.Team{})
+	if !ok || !hasCompleteLineupEntries(lineup) {
+		t.Fatalf("second cachedSoccerLineup() = (%#v, %v), want complete lineup", lineup, ok)
+	}
+	if _, ok := store.cachedSoccerLineup("world-cup-game", url, models.Team{}, models.Team{}); !ok {
+		t.Fatal("third cachedSoccerLineup() = unavailable, want cached complete lineup")
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("summary requests = %d, want 2", got)
+	}
+}
+
 func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
 	tests := []struct {
 		name string

@@ -266,6 +266,6 @@
       {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
     </div>
   </div>
-  {{if .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">View Lineup</button>{{end}}
+  {{if or (eq .Status "Scheduled") .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">{{if and .Soccer .Soccer.Lineup}}View Lineup{{else}}Lineup{{end}}</button>{{end}}
 </article>
 {{end}}

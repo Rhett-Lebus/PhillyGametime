@@ -1063,7 +1063,10 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid rgba(255,255,255,.28);
   border-radius: 5px;
   color: #fff;
-  background: linear-gradient(135deg, rgba(232,24,40,.72), rgba(0,76,84,.78));
+  border-color: transparent;
+  background:
+    linear-gradient(#18222d, #111923) padding-box,
+    linear-gradient(90deg, var(--away-color, #e81828) 0 50%, var(--home-color, #004c54) 50% 100%) border-box;
   font: inherit;
   font-size: 11px;
   font-weight: 900;
@@ -1074,18 +1077,13 @@ a { color: inherit; text-decoration: none; }
 }
 .lineup-button:hover,
 .lineup-button:focus-visible {
-  background: linear-gradient(135deg, rgba(232,24,40,.88), rgba(244,122,42,.78));
+  background:
+    linear-gradient(#243342, #182431) padding-box,
+    linear-gradient(90deg, var(--away-color, #e81828) 0 50%, var(--home-color, #004c54) 50% 100%) border-box;
 }
 .lineup-button--light {
   min-height: 34px;
   margin: 0;
-  border-color: rgba(232,24,40,.32);
-  color: #fff;
-  background: linear-gradient(135deg, var(--red), var(--green));
-}
-.lineup-button--light:hover,
-.lineup-button--light:focus-visible {
-  background: linear-gradient(135deg, var(--red), var(--gold));
 }
 .lineup-button--compact {
   width: auto;
