@@ -454,7 +454,9 @@
   }
 
   function updateSoccerPulse(card, soccer) {
-    if (!card || !soccer || !card.querySelector('[data-soccer-stat], [data-soccer-card]')) return;
+    if (!card || !soccer) return;
+    updateWorldCupGoals(card, soccer.Goals || []);
+    if (!card.querySelector('[data-soccer-stat], [data-soccer-card]')) return;
     const setText = (selector, value) => {
       const node = card.querySelector(selector);
       if (node) node.textContent = value;
@@ -478,6 +480,43 @@
     setCard('[data-soccer-card="home-yellow"]', home.YellowCards);
     setCard('[data-soccer-card="home-red"]', home.RedCards);
     updateSoccerPossession(card, soccer);
+  }
+
+  function updateWorldCupGoals(card, goals) {
+    if (!card.classList.contains('world-cup-match')) return;
+    let wrap = card.querySelector('[data-world-cup-goals]');
+    if (!Array.isArray(goals) || !goals.length) {
+      if (wrap) wrap.remove();
+      return;
+    }
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'world-cup-goals';
+      wrap.setAttribute('data-world-cup-goals', '');
+      const teams = card.querySelector('.world-cup-match__teams');
+      if (teams) teams.insertAdjacentElement('afterend', wrap);
+    }
+    const rows = goals.map((goal) => {
+      const row = document.createElement('div');
+      const minute = document.createElement('strong');
+      minute.textContent = goal.Minute || '';
+      const scorer = document.createElement('span');
+      scorer.textContent = goal.Scorer || 'Goal';
+      if (goal.OwnGoal) {
+        const ownGoal = document.createElement('small');
+        ownGoal.textContent = 'Own goal';
+        scorer.append(ownGoal);
+      } else if (goal.Assist) {
+        const assist = document.createElement('small');
+        assist.textContent = `Assist: ${goal.Assist}`;
+        scorer.append(assist);
+      }
+      const team = document.createElement('em');
+      team.textContent = goal.Team && goal.Team.Name ? goal.Team.Name : '';
+      row.append(minute, scorer, team);
+      return row;
+    });
+    wrap.replaceChildren(...rows);
   }
 
   function updateSoccerPossession(card, soccer) {
@@ -615,6 +654,7 @@
     document.querySelectorAll(`[data-lineup-game="${gameID}"]`).forEach((button) => {
       button.classList.add('lineup-button--ready');
       button.textContent = 'View Lineup';
+      button.hidden = false;
     });
   }
 
@@ -1043,8 +1083,33 @@
           (match.AwayScore > match.HomeScore ? away : home).classList.add('world-cup-bracket-team--winner');
         }
       }
+      updateWorldCupScenarios(card, match.Scenarios || []);
       updateSoccerPulse(card, match.Soccer);
     });
+  }
+
+  function updateWorldCupScenarios(card, scenarios) {
+    let wrap = card.querySelector('[data-world-cup-scenarios]');
+    if (!Array.isArray(scenarios) || !scenarios.length) {
+      if (wrap) {
+        wrap.replaceChildren();
+        wrap.hidden = true;
+      }
+      return;
+    }
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'world-cup-match-scenarios';
+      wrap.setAttribute('data-world-cup-scenarios', '');
+      const teams = card.querySelector('.world-cup-match__teams');
+      if (teams) teams.insertAdjacentElement('afterend', wrap);
+    }
+    wrap.replaceChildren(...scenarios.map((scenario) => {
+      const row = document.createElement('p');
+      row.textContent = scenario;
+      return row;
+    }));
+    wrap.hidden = false;
   }
 
   function hasWorldCupActiveWindow(matches) {

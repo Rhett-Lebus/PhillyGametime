@@ -92,11 +92,16 @@ type espnSituation struct {
 }
 
 type espnPlayer struct {
+	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	ShortName   string `json:"shortName"`
 	FullName    string `json:"fullName"`
 	Name        string `json:"name"`
-	Athlete     struct {
+	Headshot    struct {
+		Href string `json:"href"`
+	} `json:"headshot"`
+	Team    espnTeam `json:"team"`
+	Athlete struct {
 		DisplayName string `json:"displayName"`
 		ShortName   string `json:"shortName"`
 		FullName    string `json:"fullName"`
@@ -226,9 +231,38 @@ type espnStat struct {
 }
 
 type espnSummaryResp struct {
-	Boxscore espnBoxscore `json:"boxscore"`
-	Videos   []espnVideo  `json:"videos"`
-	Rosters  []espnRoster `json:"rosters"`
+	Boxscore  espnBoxscore      `json:"boxscore"`
+	Videos    []espnVideo       `json:"videos"`
+	Rosters   []espnRoster      `json:"rosters"`
+	KeyEvents []espnSoccerEvent `json:"keyEvents"`
+}
+
+type espnSoccerEvent struct {
+	Type struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"type"`
+	ShortText   string `json:"shortText"`
+	ScoringPlay bool   `json:"scoringPlay"`
+	Shootout    bool   `json:"shootout"`
+	Clock       struct {
+		DisplayValue string `json:"displayValue"`
+	} `json:"clock"`
+	Team         espnTeam `json:"team"`
+	Participants []struct {
+		Athlete espnPlayer `json:"athlete"`
+	} `json:"participants"`
+}
+
+type espnStatisticsResp struct {
+	Stats []struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+		Leaders     []struct {
+			Value   float64    `json:"value"`
+			Athlete espnPlayer `json:"athlete"`
+		} `json:"leaders"`
+	} `json:"stats"`
 }
 
 type espnBoxscore struct {
@@ -610,6 +644,11 @@ type worldCupCache struct {
 	expiresAt time.Time
 }
 
+type worldCupLeadersCache struct {
+	leaders   []models.WorldCupLeaderCategory
+	expiresAt time.Time
+}
+
 type resultsCache struct {
 	results   []models.RecentResult
 	expiresAt time.Time
@@ -617,6 +656,11 @@ type resultsCache struct {
 
 type lineupCacheEntry struct {
 	lineup    *models.BaseballLineup
+	expiresAt time.Time
+}
+
+type soccerStateCacheEntry struct {
+	state     *models.SoccerState
 	expiresAt time.Time
 }
 
@@ -638,21 +682,23 @@ const (
 )
 
 type ESPNStore struct {
-	client         *http.Client
-	mu             sync.RWMutex
-	todayCache     gameCache
-	upcomingCache  gameCache
-	schedulesCache scheduleCache
-	standingsCache standingsCache
-	leagueCache    leagueStandingsCache
-	worldCupCache  worldCupCache
-	resultsCache   resultsCache
-	lineupCache    map[string]lineupCacheEntry
-	aiRecapCache   map[string]aiGameRecap
-	highlights     map[string]highlightsCacheEntry
-	aiInFlight     map[string]bool
-	aiCachePath    string
-	highlightPath  string
+	client           *http.Client
+	mu               sync.RWMutex
+	todayCache       gameCache
+	upcomingCache    gameCache
+	schedulesCache   scheduleCache
+	standingsCache   standingsCache
+	leagueCache      leagueStandingsCache
+	worldCupCache    worldCupCache
+	worldCupLeaders  worldCupLeadersCache
+	resultsCache     resultsCache
+	lineupCache      map[string]lineupCacheEntry
+	soccerStateCache map[string]soccerStateCacheEntry
+	aiRecapCache     map[string]aiGameRecap
+	highlights       map[string]highlightsCacheEntry
+	aiInFlight       map[string]bool
+	aiCachePath      string
+	highlightPath    string
 }
 
 var (
@@ -662,17 +708,19 @@ var (
 	worldCupScoreboardURL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
 	worldCupStandingsURL  = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings"
 	worldCupSummaryURL    = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=%s"
+	worldCupStatisticsURL = "https://site.web.api.espn.com/apis/site/v2/sports/soccer/fifa.world/statistics"
 )
 
 func NewESPNStore() *ESPNStore {
 	store := &ESPNStore{
-		client:        &http.Client{Timeout: 8 * time.Second},
-		lineupCache:   map[string]lineupCacheEntry{},
-		aiRecapCache:  map[string]aiGameRecap{},
-		highlights:    map[string]highlightsCacheEntry{},
-		aiInFlight:    map[string]bool{},
-		aiCachePath:   aiRecapCachePath(),
-		highlightPath: highlightCachePath(),
+		client:           &http.Client{Timeout: 8 * time.Second},
+		lineupCache:      map[string]lineupCacheEntry{},
+		soccerStateCache: map[string]soccerStateCacheEntry{},
+		aiRecapCache:     map[string]aiGameRecap{},
+		highlights:       map[string]highlightsCacheEntry{},
+		aiInFlight:       map[string]bool{},
+		aiCachePath:      aiRecapCachePath(),
+		highlightPath:    highlightCachePath(),
 	}
 	store.loadAIRecapCache()
 	store.loadHighlightCache()
@@ -1532,6 +1580,7 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 		Groups:  s.fetchWorldCupGroups(),
 		Bracket: s.fetchWorldCupBracket(),
 		Watch:   worldCupWatchInfo(),
+		Leaders: s.fetchWorldCupLeaders(),
 	}
 	applyWorldCupBracketLayout(&cup)
 
@@ -1541,7 +1590,9 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	matches := s.fetchWorldCupMatches(start + "-" + end)
 	for _, match := range matches {
 		if match.Status == models.StatusLive {
-			match.Soccer = s.fetchSoccerState(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam)
+			match.Soccer = s.cachedSoccerState(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam, 10*time.Second)
+		} else if match.Status == models.StatusFinal && !PhillyTime(match.StartTime).Before(recentCutoff) {
+			match.Soccer = s.cachedSoccerState(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam, 12*time.Hour)
 		} else if shouldPrefetchWorldCupLineup(match, now) {
 			if lineup, ok := s.cachedSoccerLineup(match.ID, worldCupSummaryURL, match.AwayTeam, match.HomeTeam); ok {
 				match.Soccer = &models.SoccerState{Lineup: lineup}
@@ -1557,6 +1608,9 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 			cup.Upcoming = append(cup.Upcoming, match)
 		}
 	}
+	groupMatches := s.fetchWorldCupMatches("20260611-20260627")
+	applyWorldCupMatchScenarios(cup.Live, cup.Groups, groupMatches)
+	applyWorldCupMatchScenarios(cup.Upcoming, cup.Groups, groupMatches)
 	sort.Slice(cup.Live, func(i, j int) bool {
 		return cup.Live[i].StartTime.Before(cup.Live[j].StartTime)
 	})
@@ -1581,6 +1635,187 @@ func (s *ESPNStore) GetWorldCup() models.WorldCup {
 	s.worldCupCache = worldCupCache{cup: cup, expiresAt: time.Now().Add(ttl)}
 	s.mu.Unlock()
 	return cup
+}
+
+func applyWorldCupMatchScenarios(matches []models.WorldCupMatch, groups []models.WorldCupGroup, groupMatches []models.WorldCupMatch) {
+	for i := range matches {
+		if !strings.EqualFold(worldCupStageLabel(matches[i].Stage), "Group Stage") {
+			continue
+		}
+		group, ok := worldCupGroupForMatch(groups, matches[i])
+		if !ok {
+			continue
+		}
+		for _, team := range []models.Team{matches[i].AwayTeam, matches[i].HomeTeam} {
+			row, ok := worldCupStandingForTeam(group.Rows, team)
+			if !ok {
+				continue
+			}
+			if !row.Advanced && !worldCupStandingEliminated(row) &&
+				worldCupScenarioGuaranteed(group, groupMatches, matches[i], team, true, true) {
+				matches[i].Scenarios = append(matches[i].Scenarios, fmt.Sprintf("%s qualifies with a win.", team.Name))
+			}
+			if !worldCupStandingEliminated(row) &&
+				worldCupScenarioGuaranteed(group, groupMatches, matches[i], team, false, false) {
+				matches[i].Scenarios = append(matches[i].Scenarios, fmt.Sprintf("%s is eliminated with a loss.", team.Name))
+			}
+		}
+	}
+}
+
+func worldCupGroupForMatch(groups []models.WorldCupGroup, match models.WorldCupMatch) (models.WorldCupGroup, bool) {
+	for _, group := range groups {
+		_, awayOK := worldCupStandingForTeam(group.Rows, match.AwayTeam)
+		_, homeOK := worldCupStandingForTeam(group.Rows, match.HomeTeam)
+		if awayOK && homeOK {
+			return group, true
+		}
+	}
+	return models.WorldCupGroup{}, false
+}
+
+func worldCupStandingForTeam(rows []models.WorldCupStanding, team models.Team) (models.WorldCupStanding, bool) {
+	key := worldCupTeamKey(team)
+	for _, row := range rows {
+		if worldCupTeamKey(row.Team) == key {
+			return row, true
+		}
+	}
+	return models.WorldCupStanding{}, false
+}
+
+func worldCupStandingEliminated(row models.WorldCupStanding) bool {
+	return strings.Contains(strings.ToLower(row.Note), "eliminated")
+}
+
+func worldCupScenarioGuaranteed(
+	group models.WorldCupGroup,
+	allMatches []models.WorldCupMatch,
+	target models.WorldCupMatch,
+	team models.Team,
+	forceWin bool,
+	requireTopTwo bool,
+) bool {
+	points := make(map[string]int, len(group.Rows))
+	played := make(map[string]int, len(group.Rows))
+	groupTeams := make(map[string]bool, len(group.Rows))
+	for _, row := range group.Rows {
+		key := worldCupTeamKey(row.Team)
+		groupTeams[key] = true
+		points[key] = standingInt(row.Points)
+		played[key] = standingInt(row.Played)
+	}
+
+	groupSchedule := make([]models.WorldCupMatch, 0, 6)
+	finalCount := make(map[string]int, len(group.Rows))
+	for _, match := range allMatches {
+		awayKey := worldCupTeamKey(match.AwayTeam)
+		homeKey := worldCupTeamKey(match.HomeTeam)
+		if !groupTeams[awayKey] || !groupTeams[homeKey] ||
+			!strings.EqualFold(worldCupStageLabel(match.Stage), "Group Stage") {
+			continue
+		}
+		groupSchedule = append(groupSchedule, match)
+		if match.Status == models.StatusFinal {
+			finalCount[awayKey]++
+			finalCount[homeKey]++
+		}
+	}
+
+	// ESPN may include a live match's provisional result in its standings.
+	// Remove it so every unfinished match can be simulated from a stable base.
+	for _, match := range groupSchedule {
+		if match.Status != models.StatusLive {
+			continue
+		}
+		awayKey := worldCupTeamKey(match.AwayTeam)
+		homeKey := worldCupTeamKey(match.HomeTeam)
+		if played[awayKey] > finalCount[awayKey] && played[homeKey] > finalCount[homeKey] {
+			awayPoints, homePoints := worldCupResultPoints(match.AwayScore, match.HomeScore)
+			points[awayKey] -= awayPoints
+			points[homeKey] -= homePoints
+		}
+	}
+
+	remaining := make([]models.WorldCupMatch, 0, len(groupSchedule))
+	for _, match := range groupSchedule {
+		if match.Status != models.StatusFinal {
+			remaining = append(remaining, match)
+		}
+	}
+	if len(remaining) == 0 {
+		return false
+	}
+
+	teamKey := worldCupTeamKey(team)
+	targetFound := false
+	allPass := true
+	var simulate func(int)
+	simulate = func(index int) {
+		if !allPass {
+			return
+		}
+		if index == len(remaining) {
+			ahead := 0
+			for otherKey, otherPoints := range points {
+				if otherKey == teamKey {
+					continue
+				}
+				if requireTopTwo {
+					if otherPoints >= points[teamKey] {
+						ahead++
+					}
+				} else if otherPoints > points[teamKey] {
+					ahead++
+				}
+			}
+			if (requireTopTwo && ahead > 1) || (!requireTopTwo && ahead < 3) {
+				allPass = false
+			}
+			return
+		}
+
+		match := remaining[index]
+		awayKey := worldCupTeamKey(match.AwayTeam)
+		homeKey := worldCupTeamKey(match.HomeTeam)
+		outcomes := [][2]int{{3, 0}, {1, 1}, {0, 3}}
+		if match.ID == target.ID {
+			targetFound = true
+			teamIsAway := awayKey == teamKey
+			if forceWin == teamIsAway {
+				outcomes = [][2]int{{3, 0}}
+			} else {
+				outcomes = [][2]int{{0, 3}}
+			}
+		}
+		for _, outcome := range outcomes {
+			points[awayKey] += outcome[0]
+			points[homeKey] += outcome[1]
+			simulate(index + 1)
+			points[awayKey] -= outcome[0]
+			points[homeKey] -= outcome[1]
+		}
+	}
+	simulate(0)
+	return targetFound && allPass
+}
+
+func worldCupResultPoints(awayScore, homeScore int) (int, int) {
+	switch {
+	case awayScore > homeScore:
+		return 3, 0
+	case homeScore > awayScore:
+		return 0, 3
+	default:
+		return 1, 1
+	}
+}
+
+func worldCupTeamKey(team models.Team) string {
+	if id := strings.TrimSpace(team.ID); id != "" {
+		return "id:" + strings.ToLower(id)
+	}
+	return "name:" + worldCupStandingTeamName(team)
 }
 
 func hasWorldCupMatchNearLiveWindow(matches []models.WorldCupMatch, now time.Time) bool {
@@ -1649,6 +1884,70 @@ func (s *ESPNStore) fetchWorldCupGroups() []models.WorldCupGroup {
 		groups = append(groups, models.WorldCupGroup{Name: child.Name, Rows: rows})
 	}
 	return groups
+}
+
+func (s *ESPNStore) fetchWorldCupLeaders() []models.WorldCupLeaderCategory {
+	now := time.Now()
+	s.mu.RLock()
+	if now.Before(s.worldCupLeaders.expiresAt) {
+		leaders := s.worldCupLeaders.leaders
+		s.mu.RUnlock()
+		return leaders
+	}
+	s.mu.RUnlock()
+
+	var resp espnStatisticsResp
+	if err := s.fetchJSON(worldCupStatisticsURL, &resp); err != nil {
+		return nil
+	}
+	categories := make([]models.WorldCupLeaderCategory, 0, 2)
+	for _, category := range resp.Stats {
+		if category.Name != "goalsLeaders" && category.Name != "assistsLeaders" {
+			continue
+		}
+		leaders := make([]models.WorldCupLeader, 0, 5)
+		for _, leader := range category.Leaders {
+			if len(leaders) == 5 {
+				break
+			}
+			player := espnPlayerName(leader.Athlete)
+			if player == "" {
+				continue
+			}
+			leaders = append(leaders, models.WorldCupLeader{
+				Player:   player,
+				Team:     espnToTeam(leader.Athlete.Team, models.FIFA),
+				Value:    int(leader.Value),
+				Headshot: strings.TrimSpace(leader.Athlete.Headshot.Href),
+			})
+		}
+		applyWorldCupLeaderRanks(leaders)
+		if len(leaders) > 0 {
+			categories = append(categories, models.WorldCupLeaderCategory{
+				Name:    firstNonEmpty(category.DisplayName, category.Name),
+				Leaders: leaders,
+			})
+		}
+	}
+	s.mu.Lock()
+	s.worldCupLeaders = worldCupLeadersCache{
+		leaders:   categories,
+		expiresAt: now.Add(10 * time.Minute),
+	}
+	s.mu.Unlock()
+	return categories
+}
+
+func applyWorldCupLeaderRanks(leaders []models.WorldCupLeader) {
+	previousValue := -1
+	rank := 0
+	for i := range leaders {
+		if i == 0 || leaders[i].Value != previousValue {
+			rank = i + 1
+			previousValue = leaders[i].Value
+		}
+		leaders[i].Rank = rank
+	}
 }
 
 func applyWorldCupBracketLayout(cup *models.WorldCup) {
@@ -1850,17 +2149,33 @@ func worldCupMatchBullets(summary string) []string {
 
 func worldCupStandingFromEntry(entry espnStandingsEntry) models.WorldCupStanding {
 	return models.WorldCupStanding{
-		Team:    espnToTeam(entry.Team, models.FIFA),
-		Played:  worldCupStandingDisplay(entry, "gamesPlayed", "GP"),
-		Wins:    worldCupStandingDisplay(entry, "wins", "W"),
-		Draws:   worldCupStandingDisplay(entry, "ties", "draws", "D"),
-		Losses:  worldCupStandingDisplay(entry, "losses", "L"),
-		For:     worldCupStandingDisplay(entry, "pointsFor", "F"),
-		Against: worldCupStandingDisplay(entry, "pointsAgainst", "A"),
-		Diff:    worldCupStandingDisplay(entry, "pointDifferential", "GD"),
-		Points:  worldCupStandingDisplay(entry, "points", "P"),
-		Note:    strings.TrimSpace(entry.Note.Description),
+		Team:     espnToTeam(entry.Team, models.FIFA),
+		Played:   worldCupStandingDisplay(entry, "gamesPlayed", "GP"),
+		Wins:     worldCupStandingDisplay(entry, "wins", "W"),
+		Draws:    worldCupStandingDisplay(entry, "ties", "draws", "D"),
+		Losses:   worldCupStandingDisplay(entry, "losses", "L"),
+		For:      worldCupStandingDisplay(entry, "pointsFor", "F"),
+		Against:  worldCupStandingDisplay(entry, "pointsAgainst", "A"),
+		Diff:     worldCupStandingDisplay(entry, "pointDifferential", "GD"),
+		Points:   worldCupStandingDisplay(entry, "points", "P"),
+		Note:     strings.TrimSpace(entry.Note.Description),
+		Rank:     worldCupStandingInt(entry, "rank"),
+		Advanced: worldCupStandingInt(entry, "advanced") > 0,
 	}
+}
+
+func worldCupStandingInt(entry espnStandingsEntry, names ...string) int {
+	for _, name := range names {
+		for _, stat := range entry.Stats {
+			if strings.EqualFold(stat.Name, name) ||
+				strings.EqualFold(stat.Abbreviation, name) ||
+				strings.EqualFold(stat.DisplayName, name) ||
+				strings.EqualFold(stat.ShortName, name) {
+				return int(stat.Value)
+			}
+		}
+	}
+	return 0
 }
 
 func worldCupStandingDisplay(entry espnStandingsEntry, names ...string) string {
@@ -3587,16 +3902,71 @@ func (s *ESPNStore) fetchSoccerState(eventID, summaryURL string, awayTeam, homeT
 	return state
 }
 
+func (s *ESPNStore) cachedSoccerState(eventID, summaryURL string, awayTeam, homeTeam models.Team, ttl time.Duration) *models.SoccerState {
+	if eventID == "" || summaryURL == "" {
+		return nil
+	}
+	now := time.Now()
+	s.mu.RLock()
+	if cached, ok := s.soccerStateCache[eventID]; ok && now.Before(cached.expiresAt) {
+		s.mu.RUnlock()
+		return cached.state
+	}
+	s.mu.RUnlock()
+
+	state := s.fetchSoccerState(eventID, summaryURL, awayTeam, homeTeam)
+	if state == nil && ttl > 30*time.Second {
+		ttl = 30 * time.Second
+	}
+	s.mu.Lock()
+	s.soccerStateCache[eventID] = soccerStateCacheEntry{state: state, expiresAt: now.Add(ttl)}
+	s.mu.Unlock()
+	return state
+}
+
 func soccerStateFromSummary(summary espnSummaryResp, awayTeam, homeTeam models.Team) *models.SoccerState {
 	state := &models.SoccerState{
 		AwayStats: soccerTeamStats(summary.Boxscore.Teams, "away", awayTeam),
 		HomeStats: soccerTeamStats(summary.Boxscore.Teams, "home", homeTeam),
 		Lineup:    soccerLineupFromRosters(summary.Rosters, awayTeam, homeTeam),
+		Goals:     soccerGoalsFromEvents(summary.KeyEvents),
 	}
 	if !hasSoccerStats(state) && !hasLineupEntries(state.Lineup) {
 		return nil
 	}
 	return state
+}
+
+func soccerGoalsFromEvents(events []espnSoccerEvent) []models.SoccerGoal {
+	goals := make([]models.SoccerGoal, 0, 4)
+	for _, event := range events {
+		eventType := strings.ToLower(strings.TrimSpace(event.Type.Type))
+		if !event.ScoringPlay || event.Shootout || !strings.Contains(eventType, "goal") {
+			continue
+		}
+		scorer := ""
+		assist := ""
+		if len(event.Participants) > 0 {
+			scorer = espnPlayerName(event.Participants[0].Athlete)
+		}
+		if len(event.Participants) > 1 {
+			assist = espnPlayerName(event.Participants[1].Athlete)
+		}
+		if scorer == "" {
+			scorer = strings.TrimSpace(event.ShortText)
+		}
+		if scorer == "" {
+			continue
+		}
+		goals = append(goals, models.SoccerGoal{
+			Team:    espnToTeam(event.Team, models.FIFA),
+			Scorer:  scorer,
+			Assist:  assist,
+			Minute:  strings.TrimSpace(event.Clock.DisplayValue),
+			OwnGoal: eventType == "own-goal",
+		})
+	}
+	return goals
 }
 
 func soccerTeamStats(teams []espnBoxscoreTeamStats, homeAway string, fallback models.Team) models.SoccerTeamStats {
@@ -3731,6 +4101,9 @@ func soccerPositionLabel(abbr, name string) string {
 func hasSoccerStats(state *models.SoccerState) bool {
 	if state == nil {
 		return false
+	}
+	if len(state.Goals) > 0 {
+		return true
 	}
 	for _, stat := range []string{
 		state.AwayStats.Shots, state.AwayStats.ShotsOnTarget, state.AwayStats.Possession, state.AwayStats.YellowCards, state.AwayStats.RedCards,
@@ -3899,7 +4272,7 @@ func (s *ESPNStore) cachedSoccerLineup(eventID, summaryURL string, awayTeam, hom
 	}
 
 	s.mu.Lock()
-	s.lineupCache[eventID] = lineupCacheEntry{lineup: lineup, expiresAt: now.Add(lineupCacheTTL(lineup))}
+	s.lineupCache[eventID] = lineupCacheEntry{lineup: lineup, expiresAt: now.Add(soccerLineupCacheTTL(lineup))}
 	s.mu.Unlock()
 
 	return lineup, hasCompleteLineupEntries(lineup)
@@ -3913,6 +4286,13 @@ func lineupCacheTTL(lineup *models.BaseballLineup) time.Duration {
 		return 2 * time.Minute
 	}
 	return 10 * time.Minute
+}
+
+func soccerLineupCacheTTL(lineup *models.BaseballLineup) time.Duration {
+	if hasCompleteLineupEntries(lineup) {
+		return 12 * time.Hour
+	}
+	return 30 * time.Second
 }
 
 func (s *ESPNStore) fetchMLBLineup(g models.Game) *models.BaseballLineup {

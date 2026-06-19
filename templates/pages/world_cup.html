@@ -65,6 +65,7 @@
     <button type="button" class="world-cup-tab active" id="world-cup-tab-live" role="tab" aria-selected="true" aria-controls="world-cup-panel-live" data-world-cup-tab="live">Live and Recent</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-upcoming" role="tab" aria-selected="false" aria-controls="world-cup-panel-upcoming" data-world-cup-tab="upcoming">Upcoming</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-standings" role="tab" aria-selected="false" aria-controls="world-cup-panel-standings" data-world-cup-tab="standings">Standings</button>
+    <button type="button" class="world-cup-tab" id="world-cup-tab-leaders" role="tab" aria-selected="false" aria-controls="world-cup-panel-leaders" data-world-cup-tab="leaders">Leaders</button>
     <button type="button" class="world-cup-tab" id="world-cup-tab-watch" role="tab" aria-selected="false" aria-controls="world-cup-panel-watch" data-world-cup-tab="watch">Watch</button>
   </div>
 
@@ -162,6 +163,34 @@
     </div>
   </section>
 
+  <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-leaders" role="tabpanel" aria-labelledby="world-cup-tab-leaders" data-world-cup-panel="leaders" hidden>
+    <div class="world-cup-panel__head">
+      <div>
+        <p class="eyebrow">Tournament stats</p>
+        <h2>Leaders</h2>
+      </div>
+    </div>
+    <div class="world-cup-leaders">
+      {{range .Cup.Leaders}}
+      <article class="world-cup-leader-category">
+        <h3>{{.Name}}</h3>
+        <ol>
+          {{range .Leaders}}
+          <li>
+            <span class="world-cup-leader-rank">{{.Rank}}</span>
+            {{if .Headshot}}<img class="world-cup-leader-headshot" src="{{.Headshot}}" alt="">{{else if .Team.LogoURL}}<img class="world-cup-leader-headshot world-cup-leader-headshot--team" src="{{.Team.LogoURL}}" alt="">{{end}}
+            <span class="world-cup-leader-name"><strong>{{.Player}}</strong><small>{{.Team.Name}}</small></span>
+            <strong class="world-cup-leader-value">{{.Value}}</strong>
+          </li>
+          {{end}}
+        </ol>
+      </article>
+      {{else}}
+        <p class="world-cup-empty">Tournament leaders are not available yet.</p>
+      {{end}}
+    </div>
+  </section>
+
   <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-watch" role="tabpanel" aria-labelledby="world-cup-tab-watch" data-world-cup-panel="watch" hidden>
     <div class="world-cup-panel__head">
       <div>
@@ -246,6 +275,20 @@
       <strong data-world-cup-score="home" {{if eq .Status "Scheduled"}}hidden{{end}}>{{.HomeScore}}</strong>
     </div>
   </div>
+  <div class="world-cup-match-scenarios" data-world-cup-scenarios {{if not .Scenarios}}hidden{{end}}>
+    {{range .Scenarios}}<p>{{.}}</p>{{end}}
+  </div>
+  {{with .Soccer}}{{if .Goals}}
+  <div class="world-cup-goals" data-world-cup-goals>
+    {{range .Goals}}
+    <div>
+      <strong>{{.Minute}}</strong>
+      <span>{{.Scorer}}{{if .OwnGoal}} <small>Own goal</small>{{else if .Assist}} <small>Assist: {{.Assist}}</small>{{end}}</span>
+      <em>{{.Team.Name}}</em>
+    </div>
+    {{end}}
+  </div>
+  {{end}}{{end}}
   {{if eq .Status "Live"}}{{with .Soccer}}{{if and .AwayStats.Possession .HomeStats.Possession}}
   <div class="soccer-possession soccer-possession--world-cup" data-soccer-possession style="--away-possession:{{.AwayStats.Possession}}; --home-possession:{{.HomeStats.Possession}}">
     <small>Possession</small>
@@ -266,6 +309,6 @@
       {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
     </div>
   </div>
-  {{if or (eq .Status "Scheduled") .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">{{if and .Soccer .Soccer.Lineup}}View Lineup{{else}}Lineup{{end}}</button>{{end}}
+  {{if or (eq .Status "Scheduled") .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}" {{if not (and .Soccer .Soccer.Lineup)}}hidden{{end}}>View Lineup</button>{{end}}
 </article>
 {{end}}

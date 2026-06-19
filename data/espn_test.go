@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1735,6 +1736,25 @@ func TestCachedSoccerLineupRetriesPartialAndCachesComplete(t *testing.T) {
 	}
 }
 
+func TestSoccerLineupCacheTTLChecksFrequentlyUntilComplete(t *testing.T) {
+	if got := soccerLineupCacheTTL(nil); got != 30*time.Second {
+		t.Fatalf("soccerLineupCacheTTL(nil) = %v, want 30s", got)
+	}
+	partial := &models.BaseballLineup{
+		Away: []models.BaseballLineupEntry{{Name: "Away Starter"}},
+	}
+	if got := soccerLineupCacheTTL(partial); got != 30*time.Second {
+		t.Fatalf("soccerLineupCacheTTL(partial) = %v, want 30s", got)
+	}
+	complete := &models.BaseballLineup{
+		Away: []models.BaseballLineupEntry{{Name: "Away Starter"}},
+		Home: []models.BaseballLineupEntry{{Name: "Home Starter"}},
+	}
+	if got := soccerLineupCacheTTL(complete); got != 12*time.Hour {
+		t.Fatalf("soccerLineupCacheTTL(complete) = %v, want 12h", got)
+	}
+}
+
 func TestWorldCupFlagFallbackUsesAbbrAndTeamName(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1817,6 +1837,141 @@ func TestSoccerStateFromSummaryIncludesStatsAndPlayersOnField(t *testing.T) {
 	}
 	if got.Lineup.Away[1].Name != "Subbed In" {
 		t.Fatalf("second away player = %#v, want Subbed In", got.Lineup.Away[1])
+	}
+}
+
+func TestSoccerGoalsFromEventsIncludesScorerAssistAndMinute(t *testing.T) {
+	var summary espnSummaryResp
+	if err := json.Unmarshal([]byte(`{
+		"keyEvents": [
+			{
+				"type": {"type": "goal"},
+				"scoringPlay": true,
+				"clock": {"displayValue": "16'"},
+				"team": {"id": "206", "displayName": "Canada", "abbreviation": "CAN"},
+				"participants": [{"athlete": {"displayName": "Cyle Larin"}}]
+			},
+			{
+				"type": {"type": "goal---volley"},
+				"scoringPlay": true,
+				"clock": {"displayValue": "29'"},
+				"team": {"id": "206", "displayName": "Canada", "abbreviation": "CAN"},
+				"participants": [{"athlete": {"displayName": "Jonathan David"}}]
+			},
+			{
+				"type": {"type": "goal---free-kick"},
+				"scoringPlay": true,
+				"clock": {"displayValue": "64'"},
+				"team": {"id": "206", "displayName": "Canada", "abbreviation": "CAN"},
+				"participants": [{"athlete": {"displayName": "Nathan Saliba"}}]
+			},
+			{
+				"type": {"type": "own-goal"},
+				"scoringPlay": true,
+				"clock": {"displayValue": "75'"},
+				"team": {"id": "206", "displayName": "Canada", "abbreviation": "CAN"},
+				"participants": [{"athlete": {"displayName": "Mohamed Manai"}}]
+			},
+			{
+				"type": {"type": "goal"},
+				"scoringPlay": true,
+				"clock": {"displayValue": "90'+2'"},
+				"team": {"id": "206", "displayName": "Canada", "abbreviation": "CAN"},
+				"participants": [
+					{"athlete": {"displayName": "Jonathan David"}},
+					{"athlete": {"displayName": "Nathan Saliba"}}
+				]
+			},
+			{
+				"type": {"type": "penalty-goal"},
+				"scoringPlay": true,
+				"shootout": true,
+				"clock": {"displayValue": "PEN"},
+				"participants": [{"athlete": {"displayName": "Shootout Taker"}}]
+			}
+		]
+	}`), &summary); err != nil {
+		t.Fatal(err)
+	}
+	goals := soccerGoalsFromEvents(summary.KeyEvents)
+	if len(goals) != 5 {
+		t.Fatalf("soccerGoalsFromEvents len = %d, want 5", len(goals))
+	}
+	if goals[1].Scorer != "Jonathan David" || goals[1].Minute != "29'" {
+		t.Fatalf("volley goal = %#v", goals[1])
+	}
+	if goals[3].Scorer != "Mohamed Manai" || goals[3].Minute != "75'" || !goals[3].OwnGoal {
+		t.Fatalf("own goal = %#v", goals[3])
+	}
+	if goals[4].Assist != "Nathan Saliba" || goals[4].Minute != "90'+2'" {
+		t.Fatalf("assisted goal = %#v", goals[4])
+	}
+}
+
+func TestFetchWorldCupLeadersReturnsGoalsAndAssists(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"stats":[
+			{"name":"goalsLeaders","displayName":"Goals","leaders":[{"value":3,"athlete":{"displayName":"Goal Leader","team":{"id":"203","displayName":"Mexico","abbreviation":"MEX"}}}]},
+			{"name":"assistsLeaders","displayName":"Assists","leaders":[{"value":2,"athlete":{"displayName":"Assist Leader","team":{"id":"206","displayName":"Canada","abbreviation":"CAN"}}}]}
+		]}`))
+	}))
+	defer server.Close()
+
+	originalURL := worldCupStatisticsURL
+	worldCupStatisticsURL = server.URL
+	t.Cleanup(func() { worldCupStatisticsURL = originalURL })
+
+	store := NewESPNStore()
+	leaders := store.fetchWorldCupLeaders()
+	if len(leaders) != 2 || len(leaders[0].Leaders) != 1 || len(leaders[1].Leaders) != 1 {
+		t.Fatalf("fetchWorldCupLeaders() = %#v", leaders)
+	}
+	if leaders[0].Leaders[0].Player != "Goal Leader" || leaders[0].Leaders[0].Value != 3 {
+		t.Fatalf("goals leader = %#v", leaders[0].Leaders[0])
+	}
+}
+
+func TestApplyWorldCupMatchScenariosShowsOnlyGuaranteedOutcomes(t *testing.T) {
+	a := models.Team{ID: "a", Name: "Alpha", Sport: models.FIFA}
+	b := models.Team{ID: "b", Name: "Bravo", Sport: models.FIFA}
+	c := models.Team{ID: "c", Name: "Charlie", Sport: models.FIFA}
+	d := models.Team{ID: "d", Name: "Delta", Sport: models.FIFA}
+	group := models.WorldCupGroup{Name: "Group A", Rows: []models.WorldCupStanding{
+		{Team: a, Played: "2", Points: "4"},
+		{Team: b, Played: "2", Points: "4"},
+		{Team: c, Played: "2", Points: "3"},
+		{Team: d, Played: "2", Points: "0"},
+	}}
+	target := models.WorldCupMatch{
+		ID: "a-d", Stage: "Group Stage", AwayTeam: d, HomeTeam: a, Status: models.StatusScheduled,
+	}
+	matches := []models.WorldCupMatch{target}
+	schedule := []models.WorldCupMatch{
+		target,
+		{ID: "b-c", Stage: "Group Stage", AwayTeam: b, HomeTeam: c, Status: models.StatusScheduled},
+	}
+
+	applyWorldCupMatchScenarios(matches, []models.WorldCupGroup{group}, schedule)
+	want := []string{"Delta is eliminated with a loss.", "Alpha qualifies with a win."}
+	if !reflect.DeepEqual(matches[0].Scenarios, want) {
+		t.Fatalf("scenarios = %v, want %v", matches[0].Scenarios, want)
+	}
+}
+
+func TestApplyWorldCupLeaderRanksSharesRanksForTies(t *testing.T) {
+	leaders := []models.WorldCupLeader{
+		{Value: 3},
+		{Value: 3},
+		{Value: 2},
+		{Value: 1},
+		{Value: 1},
+	}
+	applyWorldCupLeaderRanks(leaders)
+	got := []int{leaders[0].Rank, leaders[1].Rank, leaders[2].Rank, leaders[3].Rank, leaders[4].Rank}
+	want := []int{1, 1, 3, 4, 4}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("leader ranks = %v, want %v", got, want)
 	}
 }
 

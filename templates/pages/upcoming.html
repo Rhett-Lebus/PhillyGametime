@@ -31,7 +31,7 @@
         {{range $g.Broadcast}}
         <span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>
         {{end}}
-        {{if and (eq $g.Sport "MLB") (isTodayGame $g)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{$g.ID}}" data-lineup-title="{{$g.AwayTeam.Name}} at {{$g.HomeTeam.Name}}">Lineup</button>{{end}}
+        {{if and (eq $g.Sport "MLB") (isTodayGame $g)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{$g.ID}}" data-lineup-title="{{$g.AwayTeam.Name}} at {{$g.HomeTeam.Name}}" {{if not $g.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
       </div>
     </article>
     {{else}}

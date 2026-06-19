@@ -113,6 +113,15 @@ type SoccerState struct {
 	AwayStats SoccerTeamStats
 	HomeStats SoccerTeamStats
 	Lineup    *BaseballLineup
+	Goals     []SoccerGoal
+}
+
+type SoccerGoal struct {
+	Team    Team
+	Scorer  string
+	Assist  string
+	Minute  string
+	OwnGoal bool
 }
 
 type SoccerTeamStats struct {
@@ -178,27 +187,29 @@ type WorldCup struct {
 	RightBracket []WorldCupRound
 	Final        WorldCupMatch
 	Watch        []WorldCupWatch
+	Leaders      []WorldCupLeaderCategory
 }
 
 type WorldCupMatch struct {
-	ID        string
-	Stage     string
-	HomeTeam  Team
-	AwayTeam  Team
-	HomeScore int
-	AwayScore int
-	Status    GameStatus
-	Period    string
-	TimeLeft  string
-	StartTime time.Time
-	Venue     string
-	City      string
-	Broadcast []string
-	Summary   string
-	Bullets   []string
-	Highlights []VideoHighlight
+	ID                string
+	Stage             string
+	HomeTeam          Team
+	AwayTeam          Team
+	HomeScore         int
+	AwayScore         int
+	Status            GameStatus
+	Period            string
+	TimeLeft          string
+	StartTime         time.Time
+	Venue             string
+	City              string
+	Broadcast         []string
+	Summary           string
+	Bullets           []string
+	Highlights        []VideoHighlight
 	HighlightsPending bool
-	Soccer    *SoccerState
+	Soccer            *SoccerState
+	Scenarios         []string
 }
 
 type WorldCupGroup struct {
@@ -207,16 +218,18 @@ type WorldCupGroup struct {
 }
 
 type WorldCupStanding struct {
-	Team    Team
-	Played  string
-	Wins    string
-	Draws   string
-	Losses  string
-	For     string
-	Against string
-	Diff    string
-	Points  string
-	Note    string
+	Team     Team
+	Played   string
+	Wins     string
+	Draws    string
+	Losses   string
+	For      string
+	Against  string
+	Diff     string
+	Points   string
+	Note     string
+	Rank     int
+	Advanced bool
 }
 
 type WorldCupRound struct {
@@ -228,4 +241,17 @@ type WorldCupWatch struct {
 	Label       string
 	Description string
 	Networks    []string
+}
+
+type WorldCupLeaderCategory struct {
+	Name    string
+	Leaders []WorldCupLeader
+}
+
+type WorldCupLeader struct {
+	Player   string
+	Team     Team
+	Value    int
+	Rank     int
+	Headshot string
 }

@@ -454,6 +454,9 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 					AwayStats: models.SoccerTeamStats{Shots: "5", ShotsOnTarget: "2", YellowCards: "1"},
 					HomeStats: models.SoccerTeamStats{Shots: "8", ShotsOnTarget: "4"},
 					Lineup:    mockSoccerLineupFor(southAfrica, mexico),
+					Goals: []models.SoccerGoal{
+						{Team: mexico, Scorer: "Santiago Gimenez", Assist: "Edson Alvarez", Minute: "29'"},
+					},
 				},
 			},
 		},
@@ -471,6 +474,7 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 				ID: "mock-wc-upcoming-1", Stage: "Group Stage", HomeTeam: southKorea, AwayTeam: czechia,
 				Status: models.StatusScheduled, StartTime: now.AddDate(0, 0, 1),
 				Venue: "Estadio Akron", City: "Guadalajara", Broadcast: []string{"FS1", "Tele", "Peacock"},
+				Scenarios: []string{"South Korea qualifies with a win.", "Czechia is eliminated with a loss."},
 			},
 			{
 				ID: "mock-wc-upcoming-2", Stage: "Group Stage", HomeTeam: canada, AwayTeam: switzerland,
@@ -480,10 +484,10 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 		},
 		Groups: []models.WorldCupGroup{
 			{Name: "Group A", Rows: []models.WorldCupStanding{
-				{Team: mexico, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
-				{Team: southAfrica, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
-				{Team: southKorea, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Best 8 advance"},
-				{Team: czechia, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Eliminated"},
+				{Team: mexico, Played: "2", Wins: "2", Draws: "0", Losses: "0", For: "3", Against: "0", Diff: "+3", Points: "6"},
+				{Team: southAfrica, Played: "2", Wins: "0", Draws: "1", Losses: "1", For: "1", Against: "3", Diff: "-2", Points: "1"},
+				{Team: southKorea, Played: "2", Wins: "1", Draws: "0", Losses: "1", For: "2", Against: "2", Diff: "0", Points: "3"},
+				{Team: czechia, Played: "2", Wins: "0", Draws: "1", Losses: "1", For: "2", Against: "3", Diff: "-1", Points: "1"},
 			}},
 			{Name: "Group B", Rows: []models.WorldCupStanding{
 				{Team: canada, Played: "0", Wins: "0", Draws: "0", Losses: "0", For: "0", Against: "0", Diff: "0", Points: "0", Note: "Advance to Round of 32"},
@@ -537,6 +541,14 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 			{Label: "English TV", Description: "National match windows on FOX or FS1.", Networks: []string{"FOX", "FS1"}},
 			{Label: "Spanish TV", Description: "Spanish-language coverage listed by ESPN as Tele.", Networks: []string{"Tele"}},
 			{Label: "Streaming", Description: "Streaming availability appears on match cards when listed.", Networks: []string{"Peacock"}},
+		},
+		Leaders: []models.WorldCupLeaderCategory{
+			{Name: "Goals", Leaders: []models.WorldCupLeader{
+				{Player: "Mock Scorer", Team: mexico, Value: 3, Rank: 1},
+			}},
+			{Name: "Assists", Leaders: []models.WorldCupLeader{
+				{Player: "Mock Creator", Team: canada, Value: 2, Rank: 1},
+			}},
 		},
 	}
 	applyWorldCupBracketLayout(&cup)

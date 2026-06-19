@@ -42,8 +42,8 @@
         <div><span>{{$.HomeTeam.Name}}</span><strong data-soccer-possession-value="home">{{.HomeStats.Possession}}</strong></div>
       </div>
       {{end}}{{end}}
-      {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
-      {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
+      {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+      {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
     </article>
     {{else}}
       {{with .NextGame}}
@@ -60,7 +60,7 @@
           <span>{{.Venue}}, {{.City}}</span>
           {{with $g.Probable}}<span class="probable-pitchers"><strong>Probable pitchers</strong>{{$g.AwayTeam.Abbr}}: {{if .Away.Name}}{{.Away.Name}}{{else}}TBD{{end}} &middot; {{$g.HomeTeam.Abbr}}: {{if .Home.Name}}{{.Home.Name}}{{else}}TBD{{end}}</span>{{end}}
           {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
-          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
+          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
         </div>
       </article>
       {{else}}
@@ -86,7 +86,7 @@
           {{if .IsPreseason}}<span class="schedule-tag schedule-tag--preseason">Preseason</span>{{end}}
           <span>{{.Venue}}, {{.City}}</span>
           {{with $g.Probable}}<span class="probable-pitchers"><strong>Probable pitchers</strong>{{$g.AwayTeam.Abbr}}: {{if .Away.Name}}{{.Away.Name}}{{else}}TBD{{end}} &middot; {{$g.HomeTeam.Abbr}}: {{if .Home.Name}}{{.Home.Name}}{{else}}TBD{{end}}</span>{{end}}
-          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">Lineup</button>{{end}}
+          {{if and (eq .Sport "MLB") (isTodayGame .)}}<button type="button" class="lineup-button lineup-button--light" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
         </div>
       </article>
       {{else}}

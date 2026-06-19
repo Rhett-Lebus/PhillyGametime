@@ -93,10 +93,23 @@ func TestWorldCupPageRenders(t *testing.T) {
 		t.Fatalf("WorldCup() status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"World Cup Match Center", "Live Scores", "How to Watch", `data-lineup-game="mock-wc-upcoming-1"`} {
+	for _, want := range []string{
+		"World Cup Match Center",
+		"Live Scores",
+		"How to Watch",
+		"Tournament stats",
+		"Mock Scorer",
+		"Santiago Gimenez",
+		"South Korea qualifies with a win.",
+		`data-lineup-game="mock-wc-upcoming-1"`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("WorldCup() body missing %q", want)
 		}
+	}
+	if !strings.Contains(body, `data-lineup-game="mock-wc-upcoming-1" data-lineup-title="`) ||
+		!strings.Contains(body, `hidden>View Lineup</button>`) {
+		t.Fatal("WorldCup() should hide unavailable lineup controls")
 	}
 }
 

@@ -12,11 +12,11 @@
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
   <script>
-    {{if .ShowThemePicker}}
+    if ({{.ShowThemePicker}}) {
       document.documentElement.dataset.theme = localStorage.getItem('phillyGametimeTheme') || 'neon';
-    {{else}}
+    } else {
       document.documentElement.dataset.theme = 'neon';
-    {{end}}
+    }
   </script>
   <link rel="stylesheet" href="/static/css/style.css?v=20260611-visual-smoke-mobile-5">
 </head>
