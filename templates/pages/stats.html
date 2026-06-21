@@ -85,7 +85,7 @@
       <h3>Recent Results</h3>
       <div class="recent-list">
         {{range .Recent}}
-        <div class="recent-item" style="--team-color:{{.Team.Primary}}">
+        <div class="recent-item" style="--team-color:{{.Team.Primary}}; --away-color:{{if .Home}}{{.Opponent.Primary}}{{else}}{{.Team.Primary}}{{end}}; --home-color:{{if .Home}}{{.Team.Primary}}{{else}}{{.Opponent.Primary}}{{end}}">
           <div class="recent-main">
             <div class="recent-logos">
               <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
@@ -100,6 +100,7 @@
           </div>
           {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
           {{template "recent_highlights" .}}
+          {{if .GameID}}<button type="button" class="lineup-button recent-boxscore-button" data-boxscore-game="{{.GameID}}" data-boxscore-title="{{.Team.Name}} {{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}">View Box Score</button>{{end}}
         </div>
         {{else}}
         <div class="empty-inline">No recent completed Philly games returned.</div>

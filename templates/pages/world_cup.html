@@ -170,25 +170,53 @@
         <h2>Leaders</h2>
       </div>
     </div>
-    <div class="world-cup-leaders">
-      {{range .Cup.Leaders}}
-      <article class="world-cup-leader-category">
-        <h3>{{.Name}}</h3>
-        <ol>
-          {{range .Leaders}}
-          <li>
-            <span class="world-cup-leader-rank">{{.Rank}}</span>
-            {{if .Headshot}}<img class="world-cup-leader-headshot" src="{{.Headshot}}" alt="">{{else if .Team.LogoURL}}<img class="world-cup-leader-headshot world-cup-leader-headshot--team" src="{{.Team.LogoURL}}" alt="">{{end}}
-            <span class="world-cup-leader-name"><strong>{{.Player}}</strong><small>{{.Team.Name}}</small></span>
-            <strong class="world-cup-leader-value">{{.Value}}</strong>
-          </li>
-          {{end}}
-        </ol>
-      </article>
-      {{else}}
-        <p class="world-cup-empty">Tournament leaders are not available yet.</p>
-      {{end}}
+    {{if .Cup.Leaders}}
+    <div class="world-cup-leader-sections">
+      <section class="world-cup-leader-section">
+        <header>
+          <div>
+            <h3>Individual Leaders</h3>
+          </div>
+          <p>Top scorers, creators, and combined attacking production.</p>
+        </header>
+        <div class="world-cup-leaders">
+          {{range .Cup.Leaders}}{{if eq .Kind "player"}}
+          {{template "world_cup_leader_category" .}}
+          {{end}}{{end}}
+        </div>
+      </section>
+
+      <section class="world-cup-leader-section">
+        <header>
+          <div>
+            <h3>Team Performance</h3>
+          </div>
+          <p>How teams compare in scoring, defending, possession, and execution.</p>
+        </header>
+        <div class="world-cup-leaders">
+          {{range .Cup.Leaders}}{{if eq .Kind "team"}}
+          {{template "world_cup_leader_category" .}}
+          {{end}}{{end}}
+        </div>
+      </section>
+
+      <section class="world-cup-leader-section world-cup-leader-section--discipline">
+        <header>
+          <div>
+            <h3>Cards</h3>
+          </div>
+          <p>Teams with the most cautions during the tournament.</p>
+        </header>
+        <div class="world-cup-leaders">
+          {{range .Cup.Leaders}}{{if eq .Kind "discipline"}}
+          {{template "world_cup_leader_category" .}}
+          {{end}}{{end}}
+        </div>
+      </section>
     </div>
+    {{else}}
+      <p class="world-cup-empty">Tournament leaders are not available yet.</p>
+    {{end}}
   </section>
 
   <section class="world-cup-panel world-cup-tab-panel" id="world-cup-panel-watch" role="tabpanel" aria-labelledby="world-cup-tab-watch" data-world-cup-panel="watch" hidden>
@@ -211,6 +239,22 @@
     </div>
   </section>
 </section>
+{{end}}
+
+{{define "world_cup_leader_category"}}
+<article class="world-cup-leader-category world-cup-leader-category--{{.Kind}}">
+  <h3>{{.Name}}</h3>
+  <ol>
+    {{range .Leaders}}
+    <li>
+      <span class="world-cup-leader-rank">{{.Rank}}</span>
+      {{if .Headshot}}<img class="world-cup-leader-headshot" src="{{.Headshot}}" alt="">{{else if .Team.LogoURL}}<img class="world-cup-leader-headshot world-cup-leader-headshot--team" src="{{.Team.LogoURL}}" alt="">{{end}}
+      <span class="world-cup-leader-name">{{if .Player}}<strong>{{.Player}}</strong><small>{{.Team.Name}}</small>{{else}}<strong>{{.Team.Name}}</strong><small>Team</small>{{end}}</span>
+      <strong class="world-cup-leader-value">{{if .DisplayValue}}{{.DisplayValue}}{{else}}{{.Value}}{{end}}</strong>
+    </li>
+    {{end}}
+  </ol>
+</article>
 {{end}}
 
 {{define "world_cup_bracket_match"}}
@@ -309,6 +353,9 @@
       {{range .Broadcast}}<span class="tv-badge {{. | tvClass}}">{{broadcastShort .}}</span>{{end}}
     </div>
   </div>
-  {{if or (eq .Status "Scheduled") .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}" {{if not (and .Soccer .Soccer.Lineup)}}hidden{{end}}>View Lineup</button>{{end}}
+  <div class="game-action-buttons">
+    {{if or (eq .Status "Live") (eq .Status "Final")}}<button type="button" class="lineup-button boxscore-button world-cup-boxscore-button" data-boxscore-game="{{.ID}}" data-boxscore-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}">View Box Score</button>{{end}}
+    {{if or (eq .Status "Scheduled") .Soccer}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} vs {{.HomeTeam.Name}}" {{if not (and .Soccer .Soccer.Lineup)}}hidden{{end}}>View Lineup</button>{{end}}
+  </div>
 </article>
 {{end}}

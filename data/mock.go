@@ -271,11 +271,11 @@ func (s *MockStore) GetRecentResults() []models.RecentResult {
 	recent := func(daysAgo int) time.Time { return base.AddDate(0, 0, -daysAgo) }
 
 	results := []models.RecentResult{
-		{Team: Eagles, Opponent: Giants, Home: true, Result: "L", Record: "L 17-24", Summary: "Eagles fell to the Giants 24-17.", Bullets: []string{"Eagles fell to the Giants 24-17."}, GameDate: recent(1)},
-		{Team: Phillies, Opponent: Mets, Home: true, Result: "W", Record: "W 6-4", Summary: "Phillies beat the Mets 6-4 behind a late push from the lineup.", Bullets: []string{"Phillies beat the Mets 6-4.", "The lineup delivered a late push."}, GameDate: recent(2)},
-		{Team: Sixers, Opponent: Nets, Home: true, Result: "W", Record: "W 112-103", Summary: "76ers beat the Nets 112-103 with a strong second-half finish.", Bullets: []string{"76ers beat the Nets 112-103.", "Philadelphia closed with a strong second half."}, GameDate: recent(3)},
-		{Team: Flyers, Opponent: Penguins, Home: false, Result: "L", Record: "L 2-4", Summary: "Flyers fell to the Penguins 4-2 on the road.", Bullets: []string{"Flyers fell to the Penguins 4-2 on the road."}, GameDate: recent(4)},
-		{Team: Union, Opponent: RedBulls, Home: false, Result: "L", Record: "L 0-1", Summary: "Union fell to the Red Bulls 1-0 in a tight road match.", Bullets: []string{"Union fell to the Red Bulls 1-0.", "The road match stayed tight throughout."}, GameDate: recent(5)},
+		{GameID: "recent-eagles-giants", Team: Eagles, Opponent: Giants, Home: true, Result: "L", Record: "L 17-24", Summary: "Eagles fell to the Giants 24-17.", Bullets: []string{"Eagles fell to the Giants 24-17."}, GameDate: recent(1)},
+		{GameID: "recent-phillies-mets", Team: Phillies, Opponent: Mets, Home: true, Result: "W", Record: "W 6-4", Summary: "Phillies beat the Mets 6-4 behind a late push from the lineup.", Bullets: []string{"Phillies beat the Mets 6-4.", "The lineup delivered a late push."}, GameDate: recent(2)},
+		{GameID: "recent-sixers-nets", Team: Sixers, Opponent: Nets, Home: true, Result: "W", Record: "W 112-103", Summary: "76ers beat the Nets 112-103 with a strong second-half finish.", Bullets: []string{"76ers beat the Nets 112-103.", "Philadelphia closed with a strong second half."}, GameDate: recent(3)},
+		{GameID: "recent-flyers-penguins", Team: Flyers, Opponent: Penguins, Home: false, Result: "L", Record: "L 2-4", Summary: "Flyers fell to the Penguins 4-2 on the road.", Bullets: []string{"Flyers fell to the Penguins 4-2 on the road."}, GameDate: recent(4)},
+		{GameID: "recent-union-red-bulls", Team: Union, Opponent: RedBulls, Home: false, Result: "L", Record: "L 0-1", Summary: "Union fell to the Red Bulls 1-0 in a tight road match.", Bullets: []string{"Union fell to the Red Bulls 1-0.", "The road match stayed tight throughout."}, GameDate: recent(5)},
 	}
 	filtered := make([]models.RecentResult, 0, len(results))
 	for _, result := range results {
@@ -543,10 +543,10 @@ func (s *MockStore) GetWorldCup() models.WorldCup {
 			{Label: "Streaming", Description: "Streaming availability appears on match cards when listed.", Networks: []string{"Peacock"}},
 		},
 		Leaders: []models.WorldCupLeaderCategory{
-			{Name: "Goals", Leaders: []models.WorldCupLeader{
+			{Name: "Goals", Kind: "player", Leaders: []models.WorldCupLeader{
 				{Player: "Mock Scorer", Team: mexico, Value: 3, Rank: 1},
 			}},
-			{Name: "Assists", Leaders: []models.WorldCupLeader{
+			{Name: "Assists", Kind: "player", Leaders: []models.WorldCupLeader{
 				{Player: "Mock Creator", Team: canada, Value: 2, Rank: 1},
 			}},
 		},
@@ -570,6 +570,41 @@ func (s *MockStore) GetGameLineup(id string) (*models.BaseballLineup, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (s *MockStore) GetGameBoxScore(id string) (*models.BoxScore, bool) {
+	game, ok := s.GetGameByID(id)
+	if !ok {
+		game, ok = recentResultGame(s.GetRecentResults(), id)
+	}
+	if !ok {
+		game, ok = worldCupGameByID(s.GetWorldCup(), id)
+	}
+	if !ok || (game.Status != models.StatusLive && game.Status != models.StatusFinal) {
+		return nil, false
+	}
+	return &models.BoxScore{
+		AwayTeam: game.AwayTeam,
+		HomeTeam: game.HomeTeam,
+		Sections: []models.BoxScoreSection{
+			{
+				Title:   "Team Stats",
+				Columns: []string{game.AwayTeam.Abbr, game.HomeTeam.Abbr},
+				Rows: []models.BoxScoreRow{
+					{Label: "Shots", Values: []string{"27", "31"}},
+					{Label: "Turnovers", Values: []string{"9", "7"}},
+				},
+			},
+			{
+				Title:   "Player Stats",
+				Team:    game.HomeTeam,
+				Columns: []string{"MIN", "PTS", "REB", "AST"},
+				Rows: []models.BoxScoreRow{
+					{Label: "Philadelphia Player", Values: []string{"32", "24", "8", "6"}},
+				},
+			},
+		},
+	}, true
 }
 
 func mockSoccerLineup() *models.BaseballLineup {

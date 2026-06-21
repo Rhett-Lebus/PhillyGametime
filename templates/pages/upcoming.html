@@ -7,7 +7,7 @@
 <section class="section">
   <div class="upcoming-list">
     {{range $g := .Games}}
-    <article class="upcoming-item" data-game-id="{{$g.ID}}" style="border-left-color:{{(phillyTeam $g).Primary}}">
+    <article class="upcoming-item" data-game-id="{{$g.ID}}" style="border-left-color:{{(phillyTeam $g).Primary}}; --away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
       <div class="upcoming-teams" style="--away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
         <div class="team-split team-split--away">
           {{if $g.AwayTeam.LogoURL}}<img src="{{$g.AwayTeam.LogoURL}}" alt="{{$g.AwayTeam.City}} {{$g.AwayTeam.Name}} logo">{{else}}<span>{{$g.AwayTeam.Abbr}}</span>{{end}}

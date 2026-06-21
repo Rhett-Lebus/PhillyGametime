@@ -42,13 +42,16 @@
         <div><span>{{$.HomeTeam.Name}}</span><strong data-soccer-possession-value="home">{{.HomeStats.Possession}}</strong></div>
       </div>
       {{end}}{{end}}
-      {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
-      {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+      <div class="game-action-buttons">
+        {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+        {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+        {{if or (eq .Status "Live") (eq .Status "Final")}}<button type="button" class="lineup-button boxscore-button" data-boxscore-game="{{.ID}}" data-boxscore-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">View Box Score</button>{{end}}
+      </div>
     </article>
     {{else}}
       {{with .NextGame}}
       {{$g := .}}
-      <article class="team-next-game" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}">
+      <article class="team-next-game" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}; --away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
         <div class="team-next-game__logos" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
           <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
           <strong>{{.AwayTeam.Name}} {{vsAt .}} {{.HomeTeam.Name}}</strong>
@@ -75,7 +78,7 @@
     <div class="upcoming-list team-upcoming-list">
       {{range .Upcoming}}
       {{$g := .}}
-      <article class="upcoming-item" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}">
+      <article class="upcoming-item" data-game-id="{{.ID}}" style="border-left-color:{{(phillyTeam .).Primary}}; --away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
         <div class="upcoming-teams" style="--away-color:{{.AwayTeam.Primary}}; --home-color:{{.HomeTeam.Primary}}">
           <div class="team-split team-split--away">{{if .AwayTeam.LogoURL}}<img src="{{.AwayTeam.LogoURL}}" alt="{{.AwayTeam.City}} {{.AwayTeam.Name}} logo">{{else}}<span>{{.AwayTeam.Abbr}}</span>{{end}}</div>
           <div class="team-matchup"><strong>{{.AwayTeam.Name}}</strong><span>{{vsAt .}}</span><strong>{{.HomeTeam.Name}}</strong></div>
@@ -118,7 +121,7 @@
     <section class="sidebar-section">
       <h3>Recent Result</h3>
       {{with .Recent}}
-      <div class="recent-item" style="--team-color:{{.Team.Primary}}">
+      <div class="recent-item" style="--team-color:{{.Team.Primary}}; --away-color:{{if .Home}}{{.Opponent.Primary}}{{else}}{{.Team.Primary}}{{end}}; --home-color:{{if .Home}}{{.Team.Primary}}{{else}}{{.Opponent.Primary}}{{end}}">
         <div class="recent-main">
           <div class="recent-logos">
             <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
@@ -133,6 +136,7 @@
         </div>
         {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
         {{template "recent_highlights" .}}
+        {{if .GameID}}<button type="button" class="lineup-button recent-boxscore-button" data-boxscore-game="{{.GameID}}" data-boxscore-title="{{.Team.Name}} {{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}">View Box Score</button>{{end}}
       </div>
       {{else}}
       <div class="empty-inline">No recent result returned.</div>

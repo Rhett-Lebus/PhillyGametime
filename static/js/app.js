@@ -1,7 +1,7 @@
 'use strict';
 
 (function () {
-  const SCORE_LIVE_POLL_INTERVAL = 15 * 1000;
+  const SCORE_LIVE_POLL_INTERVAL = 5 * 1000;
   const SCORE_IDLE_POLL_INTERVAL = 60 * 1000;
   const WORLD_CUP_ACTIVE_POLL_INTERVAL = 15 * 1000;
   const WORLD_CUP_IDLE_POLL_INTERVAL = 2 * 60 * 1000;
@@ -9,6 +9,42 @@
   const DEFAULT_THEME = 'neon';
   const LINEUP_PARTIAL_TTL = 2 * 60 * 1000;
   const lineupCache = new Map();
+
+  function initServiceWorker() {
+    const banner = document.querySelector('[data-connectivity-banner]');
+    const title = banner && banner.querySelector('[data-connectivity-title]');
+    const message = banner && banner.querySelector('[data-connectivity-message]');
+
+    const showConnectivityState = (state) => {
+      if (!banner) return;
+      if (state === 'online') {
+        banner.hidden = true;
+        return;
+      }
+      banner.hidden = false;
+      if (state === 'cached') {
+        title.textContent = 'Connection problem';
+        message.textContent = 'Showing saved information. Live scores may be out of date.';
+        return;
+      }
+      title.textContent = 'Offline';
+      message.textContent = 'Showing saved information. Live scores may be out of date.';
+    };
+
+    window.addEventListener('online', () => showConnectivityState('online'));
+    window.addEventListener('offline', () => showConnectivityState('offline'));
+    if (!navigator.onLine) showConnectivityState('offline');
+
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'PHILLY_GAMETIME_CACHED_RESPONSE') {
+        showConnectivityState('cached');
+      }
+    });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
 
   function getStoredTheme() {
     try {
@@ -976,6 +1012,304 @@
     });
   }
 
+  function boxScoreNumericValue(value) {
+    const parsed = Number.parseFloat(String(value || '').replace(/,/g, ''));
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+
+  function boxScoreTeamIdentity(team, fallback) {
+    const wrap = document.createElement('div');
+    wrap.className = 'boxscore-comparison__team';
+    if (team && team.LogoURL) {
+      const logo = document.createElement('img');
+      logo.src = team.LogoURL;
+      logo.alt = '';
+      wrap.append(logo);
+    }
+    const name = document.createElement('strong');
+    name.textContent = teamLabel(team) || fallback;
+    wrap.append(name);
+    return wrap;
+  }
+
+  function boxScoreComparison(section, boxScore) {
+    const wrap = document.createElement('section');
+    wrap.className = 'boxscore-comparison';
+    wrap.style.setProperty('--boxscore-away-color', (boxScore.AwayTeam && boxScore.AwayTeam.Primary) || '#2563eb');
+    wrap.style.setProperty('--boxscore-home-color', (boxScore.HomeTeam && boxScore.HomeTeam.Primary) || '#ef4444');
+
+    const heading = document.createElement('header');
+    const title = document.createElement('div');
+    const eyebrow = document.createElement('small');
+    eyebrow.textContent = 'Full time comparison';
+    const h3 = document.createElement('h3');
+    h3.textContent = section.Title || 'Match Stats';
+    title.append(eyebrow, h3);
+    heading.append(title);
+    wrap.append(heading);
+
+    const teams = document.createElement('div');
+    teams.className = 'boxscore-comparison__teams';
+    teams.append(
+      boxScoreTeamIdentity(boxScore.AwayTeam, section.Columns && section.Columns[0]),
+      boxScoreTeamIdentity(boxScore.HomeTeam, section.Columns && section.Columns[1]),
+    );
+    wrap.append(teams);
+
+    const rows = document.createElement('div');
+    rows.className = 'boxscore-comparison__rows';
+    (section.Rows || []).forEach((row) => {
+      const awayText = row.Values && row.Values[0] !== undefined ? String(row.Values[0]) : '-';
+      const homeText = row.Values && row.Values[1] !== undefined ? String(row.Values[1]) : '-';
+      const awayNumber = boxScoreNumericValue(awayText);
+      const homeNumber = boxScoreNumericValue(homeText);
+      const total = awayNumber + homeNumber;
+      const awayWidth = total > 0 ? (awayNumber / total) * 100 : 50;
+
+      const item = document.createElement('div');
+      item.className = 'boxscore-comparison__row';
+      const values = document.createElement('div');
+      values.className = 'boxscore-comparison__values';
+      const away = document.createElement('strong');
+      away.textContent = awayText;
+      const label = document.createElement('span');
+      label.textContent = row.Label || 'Stat';
+      const home = document.createElement('strong');
+      home.textContent = homeText;
+      values.append(away, label, home);
+
+      const bar = document.createElement('div');
+      bar.className = 'boxscore-comparison__bar';
+      const awayBar = document.createElement('span');
+      awayBar.style.width = `${awayWidth}%`;
+      const homeBar = document.createElement('span');
+      homeBar.style.width = `${100 - awayWidth}%`;
+      bar.append(awayBar, homeBar);
+      item.append(values, bar);
+      rows.append(item);
+    });
+    wrap.append(rows);
+    return wrap;
+  }
+
+  function boxScoreTable(section) {
+    const wrap = document.createElement('section');
+    wrap.className = 'boxscore-section';
+    if (section.Team && section.Team.Primary) wrap.style.setProperty('--boxscore-team-color', section.Team.Primary);
+
+    const heading = document.createElement('h3');
+    if (section.Team && section.Team.LogoURL) {
+      const logo = document.createElement('img');
+      logo.src = section.Team.LogoURL;
+      logo.alt = '';
+      heading.append(logo);
+    }
+    const title = document.createElement('span');
+    const teamName = section.Team && section.Team.Name ? `${section.Team.Name} ` : '';
+    title.textContent = `${teamName}${section.Title || 'Stats'}`;
+    heading.append(title);
+    wrap.append(heading);
+
+    const scroller = document.createElement('div');
+    scroller.className = 'boxscore-table-wrap';
+    const table = document.createElement('table');
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const playerHead = document.createElement('th');
+    playerHead.textContent = section.Team && section.Team.Name ? 'Player' : 'Stat';
+    headRow.append(playerHead);
+    (section.Columns || []).forEach((column) => {
+      const th = document.createElement('th');
+      th.textContent = column;
+      headRow.append(th);
+    });
+    head.append(headRow);
+    table.append(head);
+
+    const body = document.createElement('tbody');
+    (section.Rows || []).forEach((row) => {
+      const tr = document.createElement('tr');
+      const numericValues = (row.Values || []).map((value) => boxScoreNumericValue(value));
+      if (numericValues.length && numericValues.every((value) => value === 0)) {
+        tr.classList.add('boxscore-row--quiet');
+      }
+      const label = document.createElement('th');
+      label.scope = 'row';
+      label.textContent = row.Label || '';
+      tr.append(label);
+      (row.Values || []).forEach((value) => {
+        const td = document.createElement('td');
+        td.textContent = value === '' || value === null || value === undefined ? '-' : value;
+        tr.append(td);
+      });
+      body.append(tr);
+    });
+    table.append(body);
+    scroller.append(table);
+    wrap.append(scroller);
+    return wrap;
+  }
+
+  function boxScoreTeamTabLabel(team, fallback) {
+    return (team && (team.Abbr || team.Name)) || fallback;
+  }
+
+  function boxScoreSameTeam(sectionTeam, gameTeam) {
+    if (!sectionTeam || !gameTeam) return false;
+    if (sectionTeam.ID && gameTeam.ID) return sectionTeam.ID === gameTeam.ID;
+    return sectionTeam.Name === gameTeam.Name;
+  }
+
+  function renderBaseballBoxScore(body, boxScore) {
+    const sections = boxScore.Sections || [];
+    const lineScore = sections.filter((section) => section.Title === 'Linescore');
+    const teamSections = sections.filter((section) => section.Team && section.Team.Name);
+    if (!lineScore.length || !teamSections.length) return false;
+
+    const tabs = document.createElement('div');
+    tabs.className = 'boxscore-tabs';
+    tabs.setAttribute('role', 'tablist');
+    const panels = document.createElement('div');
+    panels.className = 'boxscore-tab-panels';
+
+    const definitions = [
+      { key: 'game', label: 'Game', team: null, sections: lineScore },
+      {
+        key: 'away',
+        label: boxScoreTeamTabLabel(boxScore.AwayTeam, 'Away'),
+        team: boxScore.AwayTeam,
+        sections: teamSections.filter((section) => boxScoreSameTeam(section.Team, boxScore.AwayTeam)),
+      },
+      {
+        key: 'home',
+        label: boxScoreTeamTabLabel(boxScore.HomeTeam, 'Home'),
+        team: boxScore.HomeTeam,
+        sections: teamSections.filter((section) => boxScoreSameTeam(section.Team, boxScore.HomeTeam)),
+      },
+    ].filter((definition) => definition.sections.length);
+
+    const activate = (key) => {
+      tabs.querySelectorAll('[data-boxscore-tab]').forEach((tab) => {
+        const active = tab.dataset.boxscoreTab === key;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      panels.querySelectorAll('[data-boxscore-panel]').forEach((panel) => {
+        panel.hidden = panel.dataset.boxscorePanel !== key;
+      });
+    };
+
+    definitions.forEach((definition, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'boxscore-tab';
+      button.dataset.boxscoreTab = definition.key;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+      if (definition.team && definition.team.LogoURL) {
+        const logo = document.createElement('img');
+        logo.src = definition.team.LogoURL;
+        logo.alt = '';
+        button.append(logo);
+      }
+      const label = document.createElement('span');
+      label.textContent = definition.label;
+      button.append(label);
+      button.addEventListener('click', () => activate(definition.key));
+      tabs.append(button);
+
+      const panel = document.createElement('div');
+      panel.className = 'boxscore-tab-panel';
+      panel.dataset.boxscorePanel = definition.key;
+      panel.setAttribute('role', 'tabpanel');
+      panel.hidden = index !== 0;
+      definition.sections.forEach((section) => panel.append(boxScoreTable(section)));
+      panels.append(panel);
+    });
+
+    body.append(tabs, panels);
+    return true;
+  }
+
+  function renderBoxScore(modal, payload) {
+    const body = modal.querySelector('.boxscore-modal__body');
+    if (!body) return;
+    body.replaceChildren();
+    if (!payload || !payload.Available || !payload.BoxScore) {
+      const message = document.createElement('p');
+      message.className = 'lineup-empty';
+      message.textContent = (payload && payload.Message) || 'Box score is not available yet.';
+      body.append(message);
+      return;
+    }
+    const boxScore = payload.BoxScore;
+    if (boxScore.AwayTeam && boxScore.AwayTeam.Primary) modal.style.setProperty('--lineup-away-color', boxScore.AwayTeam.Primary);
+    if (boxScore.HomeTeam && boxScore.HomeTeam.Primary) modal.style.setProperty('--lineup-home-color', boxScore.HomeTeam.Primary);
+    if (renderBaseballBoxScore(body, boxScore)) return;
+    (boxScore.Sections || []).forEach((section) => {
+      if (section.Title === 'Match Stats' && (section.Columns || []).length === 2) {
+        body.append(boxScoreComparison(section, boxScore));
+      } else {
+        body.append(boxScoreTable(section));
+      }
+    });
+  }
+
+  function createBoxScoreModal() {
+    const modal = document.createElement('div');
+    modal.className = 'lineup-modal boxscore-modal';
+    modal.hidden = true;
+    modal.innerHTML = `
+      <div class="lineup-modal__backdrop" data-boxscore-close></div>
+      <section class="lineup-modal__panel" role="dialog" aria-modal="true" aria-labelledby="boxscore-modal-title">
+        <header class="lineup-modal__header">
+          <h2 id="boxscore-modal-title">Box Score</h2>
+          <button type="button" class="lineup-modal__close" data-boxscore-close aria-label="Close box score">&times;</button>
+        </header>
+        <div class="lineup-modal__body boxscore-modal__body"></div>
+      </section>
+    `;
+    modal.addEventListener('click', (event) => {
+      if (event.target.closest('[data-boxscore-close]')) {
+        modal.hidden = true;
+        document.body.classList.remove('lineup-modal-open');
+      }
+    });
+    document.body.append(modal);
+    return modal;
+  }
+
+  function initBoxScoreButtons() {
+    const modal = createBoxScoreModal();
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-boxscore-game]');
+      if (!button) return;
+      const gameID = button.dataset.boxscoreGame;
+      if (!gameID) return;
+      const heading = modal.querySelector('#boxscore-modal-title');
+      const body = modal.querySelector('.boxscore-modal__body');
+      if (heading) heading.textContent = button.dataset.boxscoreTitle || 'Box Score';
+      if (body) {
+        const loading = document.createElement('p');
+        loading.className = 'lineup-empty';
+        loading.textContent = 'Loading box score...';
+        body.replaceChildren(loading);
+      }
+      modal.hidden = false;
+      document.body.classList.add('lineup-modal-open');
+      fetch(`/api/games/${encodeURIComponent(gameID)}/boxscore`)
+        .then((response) => response.ok ? response.json() : Promise.reject(response))
+        .then((payload) => renderBoxScore(modal, payload))
+        .catch(() => renderBoxScore(modal, { Available: false, Message: 'Box score is unavailable right now.' }));
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !modal.hidden) {
+        modal.hidden = true;
+        document.body.classList.remove('lineup-modal-open');
+      }
+    });
+  }
+
   function initWorldCupBracketModal() {
     const modal = document.querySelector('[data-world-cup-bracket-modal]');
     const openButtons = document.querySelectorAll('[data-world-cup-bracket-open]');
@@ -1085,6 +1419,26 @@
       }
       updateWorldCupScenarios(card, match.Scenarios || []);
       updateSoccerPulse(card, match.Soccer);
+      if (card.classList.contains('world-cup-match')) {
+        let boxScoreButton = card.querySelector('[data-boxscore-game]');
+        if (isLive || isFinal) {
+          if (!boxScoreButton) {
+            boxScoreButton = document.createElement('button');
+            boxScoreButton.type = 'button';
+            boxScoreButton.className = 'lineup-button boxscore-button world-cup-boxscore-button';
+            boxScoreButton.dataset.boxscoreGame = match.ID;
+            const awayName = match.AwayTeam && match.AwayTeam.Name ? match.AwayTeam.Name : 'Away';
+            const homeName = match.HomeTeam && match.HomeTeam.Name ? match.HomeTeam.Name : 'Home';
+            boxScoreButton.dataset.boxscoreTitle = `${awayName} vs ${homeName}`;
+            boxScoreButton.textContent = 'View Box Score';
+            const actions = card.querySelector('.game-action-buttons');
+            (actions || card).append(boxScoreButton);
+          }
+          boxScoreButton.hidden = false;
+        } else if (boxScoreButton) {
+          boxScoreButton.hidden = true;
+        }
+      }
     });
   }
 
@@ -1198,6 +1552,7 @@
   }
 
   connectEvents();
+  initServiceWorker();
   initThemePicker();
   updateHeaderHeight();
   updateScheduleControlsHeight();
@@ -1208,6 +1563,7 @@
   initSchedulePicker();
   initLeagueStandingsPicker();
   initLineupButtons();
+  initBoxScoreButtons();
   initWorldCupBracketModal();
   initWorldCupTabs();
   schedulePoll(pollWorldCup, WORLD_CUP_IDLE_POLL_INTERVAL);

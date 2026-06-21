@@ -102,8 +102,11 @@
               {{end}}
             {{end}}
           </div>
-          {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
-          {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+          <div class="game-action-buttons">
+            {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+            {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+            {{if or (eq .Status "Live") (eq .Status "Final")}}<button type="button" class="lineup-button boxscore-button" data-boxscore-game="{{.ID}}" data-boxscore-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">View Box Score</button>{{end}}
+          </div>
         </article>
         {{else}}
         <div class="empty-state">No Philly games are live today. Upcoming matchups are below.</div>
@@ -118,7 +121,7 @@
       </div>
       <div class="upcoming-list">
         {{range $g := .UpcomingGames}}
-        <article class="upcoming-item" data-game-id="{{$g.ID}}" style="border-left-color:{{(phillyTeam $g).Primary}}">
+        <article class="upcoming-item" data-game-id="{{$g.ID}}" style="border-left-color:{{(phillyTeam $g).Primary}}; --away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
           <div class="upcoming-teams" style="--away-color:{{$g.AwayTeam.Primary}}; --home-color:{{$g.HomeTeam.Primary}}">
             <div class="team-split team-split--away">
               {{if $g.AwayTeam.LogoURL}}<img src="{{$g.AwayTeam.LogoURL}}" alt="{{$g.AwayTeam.City}} {{$g.AwayTeam.Name}} logo">{{else}}<span>{{$g.AwayTeam.Abbr}}</span>{{end}}
@@ -158,7 +161,7 @@
       <h3>Recent Results</h3>
       <div class="recent-list">
         {{range .Recent}}
-        <div class="recent-item" style="--team-color:{{.Team.Primary}}">
+        <div class="recent-item" style="--team-color:{{.Team.Primary}}; --away-color:{{if .Home}}{{.Opponent.Primary}}{{else}}{{.Team.Primary}}{{end}}; --home-color:{{if .Home}}{{.Team.Primary}}{{else}}{{.Opponent.Primary}}{{end}}">
           <div class="recent-main">
             <div class="recent-logos">
               <div class="result-logo">{{if .Team.LogoURL}}<img src="{{.Team.LogoURL}}" alt="{{.Team.City}} {{.Team.Name}} logo">{{else}}<span>{{.Team.Abbr}}</span>{{end}}</div>
@@ -173,6 +176,7 @@
           </div>
           {{if .Bullets}}<ul class="recent-summary">{{range .Bullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
           {{template "recent_highlights" .}}
+          {{if .GameID}}<button type="button" class="lineup-button recent-boxscore-button" data-boxscore-game="{{.GameID}}" data-boxscore-title="{{.Team.Name}} {{if .Home}}vs{{else}}at{{end}} {{.Opponent.Name}}">View Box Score</button>{{end}}
         </div>
         {{end}}
       </div>

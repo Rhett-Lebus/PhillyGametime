@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,6 +49,182 @@ func TestGetTodaysGamesRequestsPhiladelphiaDate(t *testing.T) {
 		}
 	default:
 		t.Fatal("GetTodaysGames() did not request the scoreboard endpoint")
+	}
+}
+
+func TestGetTodaysGamesRefreshesOnlyExpiredSport(t *testing.T) {
+	now := NowPhilly()
+	var nbaRequests atomic.Int32
+	var nflRequests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/nba":
+			nbaRequests.Add(1)
+			_, _ = fmt.Fprintf(w, `{"events":[{
+				"id":"sixers-live",
+				"date":%q,
+				"competitions":[{
+					"competitors":[
+						{"homeAway":"home","score":"88","team":{"id":"20","location":"Philadelphia","name":"76ers","displayName":"Philadelphia 76ers","abbreviation":"PHI"}},
+						{"homeAway":"away","score":"84","team":{"id":"2","location":"Boston","name":"Celtics","displayName":"Boston Celtics","abbreviation":"BOS"}}
+					],
+					"status":{"period":4,"displayClock":"05:00","type":{"state":"in","name":"STATUS_IN_PROGRESS","shortDetail":"5:00 - 4th"}}
+				}]
+			}]}`, now.UTC().Format(time.RFC3339))
+		case "/nfl":
+			nflRequests.Add(1)
+			_, _ = fmt.Fprintf(w, `{"events":[{
+				"id":"eagles-scheduled",
+				"date":%q,
+				"competitions":[{
+					"competitors":[
+						{"homeAway":"home","team":{"id":"21","location":"Philadelphia","name":"Eagles","displayName":"Philadelphia Eagles","abbreviation":"PHI"}},
+						{"homeAway":"away","team":{"id":"6","location":"Dallas","name":"Cowboys","displayName":"Dallas Cowboys","abbreviation":"DAL"}}
+					],
+					"status":{"type":{"state":"pre","name":"STATUS_SCHEDULED","shortDetail":"Scheduled"}}
+				}]
+			}]}`, now.Add(2*time.Hour).UTC().Format(time.RFC3339))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	originalConfigs := sportConfigs
+	sportConfigs = []sportCfg{
+		{Sport: models.NBA, ScoreboardURL: server.URL + "/nba", PhillyTeamIDs: []string{"20"}},
+		{Sport: models.NFL, ScoreboardURL: server.URL + "/nfl", PhillyTeamIDs: []string{"21"}},
+	}
+	defer func() { sportConfigs = originalConfigs }()
+
+	store := NewESPNStore()
+	if got := store.GetTodaysGames(); len(got) != 2 {
+		t.Fatalf("first GetTodaysGames() returned %d games, want 2", len(got))
+	}
+
+	store.mu.Lock()
+	nbaCache := store.todayCache[models.NBA]
+	nbaCache.expiresAt = time.Now().Add(-time.Second)
+	store.todayCache[models.NBA] = nbaCache
+	store.mu.Unlock()
+
+	if got := store.GetTodaysGames(); len(got) != 2 {
+		t.Fatalf("second GetTodaysGames() returned %d games, want 2", len(got))
+	}
+	if got := nbaRequests.Load(); got != 2 {
+		t.Fatalf("NBA scoreboard requests = %d, want 2", got)
+	}
+	if got := nflRequests.Load(); got != 1 {
+		t.Fatalf("NFL scoreboard requests = %d, want 1", got)
+	}
+}
+
+func TestGetTodaysGamesCoalescesConcurrentSportRefreshes(t *testing.T) {
+	now := NowPhilly()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"events":[{
+			"id":"sixers-live",
+			"date":%q,
+			"competitions":[{
+				"competitors":[
+					{"homeAway":"home","score":"88","team":{"id":"20","location":"Philadelphia","name":"76ers","displayName":"Philadelphia 76ers","abbreviation":"PHI"}},
+					{"homeAway":"away","score":"84","team":{"id":"2","location":"Boston","name":"Celtics","displayName":"Boston Celtics","abbreviation":"BOS"}}
+				],
+				"status":{"type":{"state":"in","name":"STATUS_IN_PROGRESS","shortDetail":"5:00 - 4th"}}
+			}]
+		}]}`, now.UTC().Format(time.RFC3339))
+	}))
+	defer server.Close()
+
+	originalConfigs := sportConfigs
+	sportConfigs = []sportCfg{{
+		Sport: models.NBA, ScoreboardURL: server.URL, PhillyTeamIDs: []string{"20"},
+	}}
+	defer func() { sportConfigs = originalConfigs }()
+
+	store := NewESPNStore()
+	var done sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			store.GetTodaysGames()
+		}()
+	}
+	done.Wait()
+
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("concurrent scoreboard requests = %d, want 1", got)
+	}
+}
+
+func TestTodaySportTTL(t *testing.T) {
+	if got := todaySportTTL([]models.Game{{Status: models.StatusLive}}); got != 5*time.Second {
+		t.Fatalf("live TTL = %v, want 5s", got)
+	}
+	if got := todaySportTTL([]models.Game{{Status: models.StatusScheduled}}); got != time.Minute {
+		t.Fatalf("idle TTL = %v, want 1m", got)
+	}
+}
+
+func TestRecentResultGameReconstructsAwayFinal(t *testing.T) {
+	result := models.RecentResult{
+		GameID:   "recent-1",
+		Team:     models.Team{Name: "Phillies", Sport: models.MLB},
+		Opponent: models.Team{Name: "Mets", Sport: models.MLB},
+		Home:     false,
+		Record:   "W 6-4",
+	}
+	game, ok := recentResultGame([]models.RecentResult{result}, "recent-1")
+	if !ok {
+		t.Fatal("recentResultGame() did not find result")
+	}
+	if game.AwayTeam.Name != "Phillies" || game.HomeTeam.Name != "Mets" {
+		t.Fatalf("recentResultGame() teams = %s at %s", game.AwayTeam.Name, game.HomeTeam.Name)
+	}
+	if game.AwayScore != 6 || game.HomeScore != 4 || game.Status != models.StatusFinal {
+		t.Fatalf("recentResultGame() = %#v", game)
+	}
+}
+
+func TestWorldCupGameByIDFindsRecentMatch(t *testing.T) {
+	cup := models.WorldCup{Recent: []models.WorldCupMatch{{
+		ID: "wc-final", HomeTeam: models.Team{Name: "USA"}, AwayTeam: models.Team{Name: "Canada"},
+		HomeScore: 2, AwayScore: 1, Status: models.StatusFinal,
+	}}}
+	game, ok := worldCupGameByID(cup, "wc-final")
+	if !ok || game.Sport != models.FIFA || game.HomeScore != 2 || game.AwayScore != 1 {
+		t.Fatalf("worldCupGameByID() = %#v, %v", game, ok)
+	}
+}
+
+func TestSoccerBoxScoreRowsAreCuratedAndFormatted(t *testing.T) {
+	stats := func(possession, passPct float64, shots int) []espnStat {
+		return []espnStat{
+			{Name: "foulsCommitted", Value: 12, DisplayValue: "12"},
+			{Name: "possessionPct", Value: possession, DisplayValue: strconv.FormatFloat(possession, 'f', 1, 64)},
+			{Name: "totalShots", Value: float64(shots), DisplayValue: strconv.Itoa(shots)},
+			{Name: "shotsOnTarget", Value: 5, DisplayValue: "5"},
+			{Name: "passPct", Value: passPct, DisplayValue: strconv.FormatFloat(passPct, 'f', 1, 64)},
+			{Name: "accuratePasses", Value: 521, DisplayValue: "521"},
+			{Name: "totalPasses", Value: 583, DisplayValue: "583"},
+			{Name: "totalLongBalls", Value: 32, DisplayValue: "32"},
+		}
+	}
+	rows := soccerBoxScoreRows(stats(62.1, .9, 11), stats(37.9, .8, 2))
+	if len(rows) == 0 || rows[0].Label != "Possession" || rows[0].Values[0] != "62.1%" {
+		t.Fatalf("soccerBoxScoreRows() first row = %#v", rows)
+	}
+	for _, row := range rows {
+		if row.Label == "totalLongBalls" || row.Label == "Total long balls" {
+			t.Fatalf("soccerBoxScoreRows() included low-value raw stat: %#v", row)
+		}
 	}
 }
 
@@ -1593,14 +1771,10 @@ func TestPitcherStrikeoutsExtractsCurrentPitcherKColumn(t *testing.T) {
 func TestMLBPitcherStrikeoutsUsesLiveFeedBoxscore(t *testing.T) {
 	k := 4
 	feed := mlbLiveFeedResp{}
+	player := mlbBoxscorePlayer{Person: mlbPerson{ID: 123, FullName: "Ranger Suarez"}}
+	player.Stats.Pitching.StrikeOuts = &k
 	feed.LiveData.Boxscore.Teams.Away.Players = map[string]mlbBoxscorePlayer{
-		"ID123": {
-			Person: mlbPerson{ID: 123, FullName: "Ranger Suarez"},
-			Stats: mlbBoxscorePlayerStats{Pitching: struct {
-				ERA        string `json:"era"`
-				StrikeOuts *int   `json:"strikeOuts"`
-			}{StrikeOuts: &k}},
-		},
+		"ID123": player,
 	}
 
 	got := mlbPitcherStrikeouts(feed, mlbPerson{ID: 123, FullName: "Ranger Suarez"})
@@ -1613,33 +1787,30 @@ func TestMLBLineupFromFeedIncludesSeasonStats(t *testing.T) {
 	feed := mlbLiveFeedResp{}
 	feed.LiveData.Boxscore.Teams.Away.BattingOrder = []int{11}
 	feed.LiveData.Boxscore.Teams.Away.Pitchers = []int{22}
+	batter := mlbBoxscorePlayer{
+		Person:       mlbPerson{ID: 11, FullName: "Trea Turner"},
+		BattingOrder: "100",
+		Position: struct {
+			Abbreviation string `json:"abbreviation"`
+			Name         string `json:"name"`
+		}{Abbreviation: "SS"},
+	}
+	batter.SeasonStats.Batting.Avg = ".289"
+	pitcher := mlbBoxscorePlayer{
+		Person: mlbPerson{ID: 22, FullName: "Zack Wheeler"},
+		PitchHand: struct {
+			Code        string `json:"code"`
+			Description string `json:"description"`
+		}{Code: "R"},
+		Position: struct {
+			Abbreviation string `json:"abbreviation"`
+			Name         string `json:"name"`
+		}{Abbreviation: "P"},
+	}
+	pitcher.SeasonStats.Pitching.ERA = "2.86"
 	feed.LiveData.Boxscore.Teams.Away.Players = map[string]mlbBoxscorePlayer{
-		"ID11": {
-			Person:       mlbPerson{ID: 11, FullName: "Trea Turner"},
-			BattingOrder: "100",
-			Position: struct {
-				Abbreviation string `json:"abbreviation"`
-				Name         string `json:"name"`
-			}{Abbreviation: "SS"},
-			SeasonStats: mlbBoxscorePlayerStats{Batting: struct {
-				Avg string `json:"avg"`
-			}{Avg: ".289"}},
-		},
-		"ID22": {
-			Person: mlbPerson{ID: 22, FullName: "Zack Wheeler"},
-			PitchHand: struct {
-				Code        string `json:"code"`
-				Description string `json:"description"`
-			}{Code: "R"},
-			Position: struct {
-				Abbreviation string `json:"abbreviation"`
-				Name         string `json:"name"`
-			}{Abbreviation: "P"},
-			SeasonStats: mlbBoxscorePlayerStats{Pitching: struct {
-				ERA        string `json:"era"`
-				StrikeOuts *int   `json:"strikeOuts"`
-			}{ERA: "2.86"}},
-		},
+		"ID11": batter,
+		"ID22": pitcher,
 	}
 
 	got := mlbLineupFromFeed(feed, models.Game{})
@@ -1911,6 +2082,10 @@ func TestSoccerGoalsFromEventsIncludesScorerAssistAndMinute(t *testing.T) {
 func TestFetchWorldCupLeadersReturnsGoalsAndAssists(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/scoreboard" {
+			_, _ = w.Write([]byte(`{"events":[]}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"stats":[
 			{"name":"goalsLeaders","displayName":"Goals","leaders":[{"value":3,"athlete":{"displayName":"Goal Leader","team":{"id":"203","displayName":"Mexico","abbreviation":"MEX"}}}]},
 			{"name":"assistsLeaders","displayName":"Assists","leaders":[{"value":2,"athlete":{"displayName":"Assist Leader","team":{"id":"206","displayName":"Canada","abbreviation":"CAN"}}}]}
@@ -1919,16 +2094,106 @@ func TestFetchWorldCupLeadersReturnsGoalsAndAssists(t *testing.T) {
 	defer server.Close()
 
 	originalURL := worldCupStatisticsURL
+	originalScoreboardURL := worldCupScoreboardURL
 	worldCupStatisticsURL = server.URL
-	t.Cleanup(func() { worldCupStatisticsURL = originalURL })
+	worldCupScoreboardURL = server.URL + "/scoreboard"
+	t.Cleanup(func() {
+		worldCupStatisticsURL = originalURL
+		worldCupScoreboardURL = originalScoreboardURL
+	})
 
 	store := NewESPNStore()
 	leaders := store.fetchWorldCupLeaders()
-	if len(leaders) != 2 || len(leaders[0].Leaders) != 1 || len(leaders[1].Leaders) != 1 {
+	if len(leaders) != 3 || len(leaders[0].Leaders) != 1 || len(leaders[1].Leaders) != 1 {
 		t.Fatalf("fetchWorldCupLeaders() = %#v", leaders)
 	}
 	if leaders[0].Leaders[0].Player != "Goal Leader" || leaders[0].Leaders[0].Value != 3 {
 		t.Fatalf("goals leader = %#v", leaders[0].Leaders[0])
+	}
+}
+
+func TestWorldCupGoalContributionsCombinesGoalsAndAssists(t *testing.T) {
+	mexico := models.Team{ID: "203", Name: "Mexico", Sport: models.FIFA}
+	goals := []models.WorldCupLeader{
+		{Player: "Alex Forward", Team: mexico, Value: 3},
+		{Player: "Casey Striker", Team: mexico, Value: 2},
+	}
+	assists := []models.WorldCupLeader{
+		{Player: "Alex Forward", Team: mexico, Value: 2},
+		{Player: "Jordan Creator", Team: mexico, Value: 4},
+	}
+
+	got := worldCupGoalContributions(goals, assists)
+	if len(got) != 3 {
+		t.Fatalf("contributions len = %d, want 3", len(got))
+	}
+	if got[0].Player != "Alex Forward" || got[0].Value != 5 {
+		t.Fatalf("top contribution = %#v, want Alex Forward with 5", got[0])
+	}
+}
+
+func TestFetchWorldCupTeamLeaderCategoriesAggregatesMatches(t *testing.T) {
+	mexico := worldCupTeam("203", "Mexico", "MEX", "#006847", "")
+	canada := worldCupTeam("206", "Canada", "CAN", "#d80621", "")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"boxscore":{"teams":[
+				{"homeAway":"home","team":{"id":"203","displayName":"Mexico","abbreviation":"MEX"},"statistics":[
+					{"name":"shotsOnTarget","value":6},{"name":"possessionPct","value":60},
+					{"name":"accuratePasses","value":450},{"name":"totalPasses","value":500},
+					{"name":"saves","value":2},{"name":"yellowCards","value":1},{"name":"redCards","value":0}
+				]},
+				{"homeAway":"away","team":{"id":"206","displayName":"Canada","abbreviation":"CAN"},"statistics":[
+					{"name":"shotsOnTarget","value":3},{"name":"possessionPct","value":40},
+					{"name":"accuratePasses","value":240},{"name":"totalPasses","value":300},
+					{"name":"saves","value":4},{"name":"yellowCards","value":2},{"name":"redCards","value":1}
+				]}
+			]}
+		}`))
+	}))
+	defer server.Close()
+
+	originalSummaryURL := worldCupSummaryURL
+	worldCupSummaryURL = server.URL + "?event=%s"
+	t.Cleanup(func() { worldCupSummaryURL = originalSummaryURL })
+
+	match := models.WorldCupMatch{
+		ID: "match-1", HomeTeam: mexico, AwayTeam: canada,
+		HomeScore: 2, AwayScore: 0, Status: models.StatusFinal,
+	}
+	categories := NewESPNStore().fetchWorldCupTeamLeaderCategories([]models.WorldCupMatch{match})
+	byName := map[string]models.WorldCupLeaderCategory{}
+	for _, category := range categories {
+		byName[category.Name] = category
+	}
+	if got := byName["Team Goals"].Leaders[0]; got.Team.Name != "Mexico" || got.Value != 2 {
+		t.Fatalf("team goals leader = %#v", got)
+	}
+	if got := byName["Clean Sheets"].Leaders[0]; got.Team.Name != "Mexico" || got.Value != 1 {
+		t.Fatalf("clean sheets leader = %#v", got)
+	}
+	if got := byName["Average Possession"].Leaders[0]; got.DisplayValue != "60%" {
+		t.Fatalf("possession leader = %#v", got)
+	}
+	if got := byName["Pass Accuracy"].Leaders[0]; got.DisplayValue != "90%" {
+		t.Fatalf("passing leader = %#v", got)
+	}
+	if got := byName["Most Red Cards"].Leaders[0]; got.Team.Name != "Canada" || got.Value != 1 {
+		t.Fatalf("red cards leader = %#v", got)
+	}
+}
+
+func TestWorldCupTeamLeaderCategoriesHideZeroRedCards(t *testing.T) {
+	mexico := worldCupTeam("203", "Mexico", "MEX", "#006847", "")
+	totals := map[string]*worldCupTeamTotals{
+		worldCupTeamKey(mexico): {team: mexico},
+	}
+	category := worldCupTeamLeaderCategory("Most Red Cards", totals, func(total *worldCupTeamTotals) (int, string) {
+		return total.redCards, strconv.Itoa(total.redCards)
+	})
+	if len(category.Leaders) != 0 {
+		t.Fatalf("zero red-card leaders = %#v, want none", category.Leaders)
 	}
 }
 

@@ -881,6 +881,23 @@ func (h *Handler) APIGameLineup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"Available": true, "Lineup": lineup})
 }
 
+func (h *Handler) APIGameBoxScore(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	provider, ok := h.store.(interface {
+		GetGameBoxScore(string) (*models.BoxScore, bool)
+	})
+	if !ok {
+		writeJSON(w, map[string]interface{}{"Available": false, "Message": "Box score is unavailable."})
+		return
+	}
+	boxScore, available := provider.GetGameBoxScore(id)
+	if !available {
+		writeJSON(w, map[string]interface{}{"Available": false, "Message": "Box score is not available yet."})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"Available": true, "BoxScore": boxScore})
+}
+
 func (h *Handler) APIStandings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.store.GetStandings())
 }

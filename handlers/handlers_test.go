@@ -102,6 +102,8 @@ func TestWorldCupPageRenders(t *testing.T) {
 		"Santiago Gimenez",
 		"South Korea qualifies with a win.",
 		`data-lineup-game="mock-wc-upcoming-1"`,
+		`data-boxscore-game="mock-wc-live"`,
+		`data-boxscore-game="mock-wc-recent-1"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("WorldCup() body missing %q", want)
@@ -110,6 +112,95 @@ func TestWorldCupPageRenders(t *testing.T) {
 	if !strings.Contains(body, `data-lineup-game="mock-wc-upcoming-1" data-lineup-title="`) ||
 		!strings.Contains(body, `hidden>View Lineup</button>`) {
 		t.Fatal("WorldCup() should hide unavailable lineup controls")
+	}
+}
+
+func TestScoresPageRendersBoxScoreControls(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(".."); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/scores", nil)
+	rec := httptest.NewRecorder()
+	h.Scores(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Scores() status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `data-boxscore-game="game-phillies-mets"`) {
+		t.Fatal("Scores() should render a box score control for a live game")
+	}
+}
+
+func TestHomePageRendersRecentBoxScoreControls(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(".."); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.Home(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Home() status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `data-boxscore-game="recent-phillies-mets"`) {
+		t.Fatal("Home() should render a box score control for recent results")
+	}
+}
+
+func TestAPIGameBoxScoreReturnsAvailableBoxScore(t *testing.T) {
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/api/games/game-sixers-nets/boxscore", nil)
+	req.SetPathValue("id", "game-sixers-nets")
+	rec := httptest.NewRecorder()
+
+	h.APIGameBoxScore(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("APIGameBoxScore() status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"Available":true`) || !strings.Contains(body, `"BoxScore"`) {
+		t.Fatalf("APIGameBoxScore() body = %s", body)
+	}
+}
+
+func TestAPIGameBoxScoreReturnsRecentResult(t *testing.T) {
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/api/games/recent-phillies-mets/boxscore", nil)
+	req.SetPathValue("id", "recent-phillies-mets")
+	rec := httptest.NewRecorder()
+
+	h.APIGameBoxScore(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `"Available":true`) {
+		t.Fatalf("APIGameBoxScore() recent result body = %s", rec.Body.String())
+	}
+}
+
+func TestAPIGameBoxScoreReturnsWorldCupMatch(t *testing.T) {
+	h := New(data.NewMockStore(), events.NewBus())
+	req := httptest.NewRequest(http.MethodGet, "/api/games/mock-wc-recent-1/boxscore", nil)
+	req.SetPathValue("id", "mock-wc-recent-1")
+	rec := httptest.NewRecorder()
+
+	h.APIGameBoxScore(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `"Available":true`) {
+		t.Fatalf("APIGameBoxScore() World Cup body = %s", rec.Body.String())
 	}
 }
 

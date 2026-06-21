@@ -28,6 +28,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.HandleFunc("GET /sw.js", serveServiceWorker)
 
 	mux.HandleFunc("GET /", h.Home)
 	mux.HandleFunc("GET /scores", h.Scores)
@@ -43,10 +44,11 @@ func main() {
 	mux.HandleFunc("GET /api/upcoming", h.APIUpcoming)
 	mux.HandleFunc("GET /api/world-cup", h.APIWorldCup)
 	mux.HandleFunc("GET /api/games/{id}/lineup", h.APIGameLineup)
+	mux.HandleFunc("GET /api/games/{id}/boxscore", h.APIGameBoxScore)
 	mux.HandleFunc("GET /api/standings", h.APIStandings)
 	mux.HandleFunc("GET /events", h.SSE)
 
-	go publishScoreChanges(store, bus, 30*time.Second)
+	go publishScoreChanges(store, bus, 5*time.Second)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -65,6 +67,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+func serveServiceWorker(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	http.ServeFile(w, r, "static/sw.js")
 }
 
 func openAIModelName() string {

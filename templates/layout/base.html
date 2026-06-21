@@ -18,9 +18,13 @@
       document.documentElement.dataset.theme = 'neon';
     }
   </script>
-  <link rel="stylesheet" href="/static/css/style.css?v=20260611-visual-smoke-mobile-5">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260621-boxscore-19">
 </head>
 <body>
+  <div class="connectivity-banner" data-connectivity-banner role="status" aria-live="polite" hidden>
+    <strong data-connectivity-title>Offline</strong>
+    <span data-connectivity-message>Showing saved information. Live scores may be out of date.</span>
+  </div>
   {{template "header" .}}
 
   <main class="container">
@@ -28,7 +32,7 @@
   </main>
 
   {{template "footer" .}}
-  <script src="/static/js/app.js?v=20260611-visual-smoke-mobile-5"></script>
+  <script src="/static/js/app.js?v=20260621-boxscore-19"></script>
 </body>
 </html>
 {{end}}

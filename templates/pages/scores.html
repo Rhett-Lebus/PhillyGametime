@@ -90,8 +90,11 @@
           {{end}}
         {{end}}
       </div>
-      {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
-      {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+      <div class="game-action-buttons">
+        {{if eq .Sport "MLB"}}<button type="button" class="lineup-button" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+        {{if .Soccer}}<button type="button" class="lineup-button lineup-button--compact" data-lineup-game="{{.ID}}" data-lineup-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}" {{if not .Soccer.Lineup}}hidden{{end}}>View Lineup</button>{{end}}
+        {{if or (eq .Status "Live") (eq .Status "Final")}}<button type="button" class="lineup-button boxscore-button" data-boxscore-game="{{.ID}}" data-boxscore-title="{{.AwayTeam.Name}} at {{.HomeTeam.Name}}">View Box Score</button>{{end}}
+      </div>
       <div class="game-venue-line">{{.Venue}}, {{.City}}</div>
     </article>
     {{else}}

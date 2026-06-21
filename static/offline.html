@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#004c54">
+  <title>Offline | Philly Gametime</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #030912; color: #f4fbff; }
+    main { width: min(480px, calc(100% - 40px)); padding: 32px; border: 1px solid #004c54; border-radius: 12px; background: #071928; text-align: center; }
+    h1 { margin-top: 0; }
+    p { color: #a9c4d4; line-height: 1.5; }
+    button { padding: 11px 18px; border: 0; border-radius: 7px; color: #fff; background: #cf1728; font: inherit; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>You're offline</h1>
+    <p>Previously opened pages may still be available. Reconnect to get current scores and schedules.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+</body>
+</html>

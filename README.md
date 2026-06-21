@@ -8,6 +8,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 
 - Home dashboard with today's Philly action, upcoming games, recent results, and standings
 - Live scores page
+- Independent per-sport score refreshes: live sports update every 5 seconds without refetching inactive leagues
 - Live MLB game state with base runners, balls, strikes, outs, current batter, current pitcher, and the pitcher's current-game strikeouts while games are live
 - Final MLB games collapse back to score-only cards instead of showing stale count/base/play state
 - Upcoming schedule page
@@ -17,6 +18,7 @@ The app covers the Eagles, Phillies, 76ers, Flyers, and Union. It uses ESPN-back
 - Stats/standings page with league standings by sport plus division/conference/full-league scopes when available
 - TV/stream guide with Philly-first broadcast sorting
 - Theme picker with Basic, Light, Dark, Midnight, and multiple Neon modes
+- Installable PWA support with cached pages/assets, offline fallback, and stale-data warnings
 - Server-sent events endpoint for score and sport-specific event hooks
 - Mock data mode for local design/development previews
 

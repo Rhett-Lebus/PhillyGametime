@@ -56,6 +56,24 @@ type Game struct {
 	IsPreseason bool
 }
 
+type BoxScore struct {
+	AwayTeam Team
+	HomeTeam Team
+	Sections []BoxScoreSection
+}
+
+type BoxScoreSection struct {
+	Title   string
+	Team    Team
+	Columns []string
+	Rows    []BoxScoreRow
+}
+
+type BoxScoreRow struct {
+	Label  string
+	Values []string
+}
+
 type TeamSchedule struct {
 	Team  Team
 	Games []Game
@@ -245,13 +263,15 @@ type WorldCupWatch struct {
 
 type WorldCupLeaderCategory struct {
 	Name    string
+	Kind    string
 	Leaders []WorldCupLeader
 }
 
 type WorldCupLeader struct {
-	Player   string
-	Team     Team
-	Value    int
-	Rank     int
-	Headshot string
+	Player       string
+	Team         Team
+	Value        int
+	DisplayValue string
+	Rank         int
+	Headshot     string
 }
