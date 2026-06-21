@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_VERSION = 'philly-gametime-v19';
+const CACHE_VERSION = 'philly-gametime-v20';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [

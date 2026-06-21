@@ -1078,6 +1078,15 @@ a { color: inherit; text-decoration: none; }
 .lineup-button {
   --button-away-color: var(--away-color, var(--team-color, #2563eb));
   --button-home-color: var(--home-color, var(--team-color, #ef4444));
+  --button-team-gradient:
+    linear-gradient(
+      105deg,
+      var(--button-away-color) 0%,
+      color-mix(in srgb, var(--button-away-color) 68%, var(--button-home-color)) 34%,
+      color-mix(in srgb, var(--button-away-color) 50%, var(--button-home-color)) 50%,
+      color-mix(in srgb, var(--button-home-color) 68%, var(--button-away-color)) 66%,
+      var(--button-home-color) 100%
+    );
   position: relative;
   z-index: 3;
   display: inline-flex;
@@ -1092,7 +1101,7 @@ a { color: inherit; text-decoration: none; }
   border-color: transparent;
   background:
     linear-gradient(#18222d, #111923) padding-box,
-    linear-gradient(90deg, var(--button-away-color) 0 50%, var(--button-home-color) 50% 100%) border-box;
+    var(--button-team-gradient) border-box;
   font: inherit;
   font-size: 11px;
   font-weight: 900;
@@ -1116,7 +1125,7 @@ a { color: inherit; text-decoration: none; }
       color-mix(in srgb, var(--button-home-color) 58%, var(--button-away-color)) 68%,
       color-mix(in srgb, var(--button-home-color) 68%, #172332) 100%
     ) padding-box,
-    linear-gradient(90deg, var(--button-away-color) 0 50%, var(--button-home-color) 50% 100%) border-box;
+    var(--button-team-gradient) border-box;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.22),
     0 8px 20px color-mix(in srgb, var(--button-away-color) 14%, transparent),
