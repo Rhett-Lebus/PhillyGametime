@@ -255,7 +255,7 @@ func TestStatsLeagueSportOrderKeepsMLBFirstWhenMultipleSportsActive(t *testing.T
 	}
 }
 
-func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecific(t *testing.T) {
+func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecificAndDefaultsMLBToDivision(t *testing.T) {
 	leagues := []models.LeagueStandings{
 		{
 			Sport: models.MLB,
@@ -277,8 +277,81 @@ func TestBuildLeagueStandingsViewsOrdersScopesBroadToSpecific(t *testing.T) {
 			t.Fatalf("view order = %#v, want keys %#v", got[0].Views, wantKeys)
 		}
 	}
+	if got[0].Views[0].Active {
+		t.Fatalf("overall view Active = true, want false for MLB default")
+	}
+	if !got[0].Views[2].Active {
+		t.Fatalf("division view Active = false, want true for MLB default")
+	}
+}
+
+func TestBuildLeagueStandingsViewsDefaultsNonMLBToOverall(t *testing.T) {
+	leagues := []models.LeagueStandings{
+		{
+			Sport: models.NBA,
+			Views: []models.StandingsView{
+				{Key: "division", Label: "Atlantic", Scope: "Division", Rows: []models.StandingsRow{{Team: models.Team{Name: "76ers", Sport: models.NBA}}}},
+				{Key: "conference", Label: "Eastern Conference", Scope: "Conference", Rows: []models.StandingsRow{{Team: models.Team{Name: "76ers", Sport: models.NBA}}}},
+				{Key: "overall", Label: "NBA", Scope: "Overall", Rows: []models.StandingsRow{{Team: models.Team{Name: "76ers", Sport: models.NBA}}}},
+			},
+		},
+	}
+
+	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.NBA: true}, "")
+	if len(got) != 1 || len(got[0].Views) != 3 {
+		t.Fatalf("buildLeagueStandingsViews() = %#v, want one league with three views", got)
+	}
 	if !got[0].Views[0].Active {
-		t.Fatalf("overall view Active = false, want true")
+		t.Fatalf("overall view Active = false, want true for NBA default")
+	}
+}
+
+func TestBuildLeagueStandingsViewsShowsGamesBackOnlyForMLBScopedViews(t *testing.T) {
+	leagues := []models.LeagueStandings{
+		{
+			Sport: models.MLB,
+			Views: []models.StandingsView{
+				{Key: "division", Label: "NL East", Scope: "Division", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}, GamesBack: "2"}}},
+				{Key: "league-national-league", Label: "National League", Scope: "League", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}, GamesBack: "4.5"}}},
+				{Key: "overall", Label: "MLB", Scope: "Overall", Rows: []models.StandingsRow{{Team: models.Team{Name: "Phillies", Sport: models.MLB}, GamesBack: "2"}}},
+			},
+		},
+		{
+			Sport: models.NBA,
+			Views: []models.StandingsView{
+				{Key: "division", Label: "Atlantic", Scope: "Division", Rows: []models.StandingsRow{{Team: models.Team{Name: "76ers", Sport: models.NBA}, GamesBack: "2"}}},
+			},
+		},
+	}
+
+	got := buildLeagueStandingsViews(leagues, map[models.Sport]bool{models.MLB: true, models.NBA: true}, "")
+	var mlbDivision, mlbLeague, mlbOverall, nbaDivision *LeagueScopeView
+	for i := range got {
+		for j := range got[i].Views {
+			view := &got[i].Views[j]
+			switch {
+			case got[i].Sport == models.MLB && view.Key == "division":
+				mlbDivision = view
+			case got[i].Sport == models.MLB && view.Key == "league-national-league":
+				mlbLeague = view
+			case got[i].Sport == models.MLB && view.Key == "overall":
+				mlbOverall = view
+			case got[i].Sport == models.NBA && view.Key == "division":
+				nbaDivision = view
+			}
+		}
+	}
+	if mlbDivision == nil || !mlbDivision.ShowGamesBack {
+		t.Fatalf("MLB division ShowGamesBack = %#v, want true", mlbDivision)
+	}
+	if mlbLeague == nil || !mlbLeague.ShowGamesBack {
+		t.Fatalf("MLB league ShowGamesBack = %#v, want true", mlbLeague)
+	}
+	if mlbOverall == nil || mlbOverall.ShowGamesBack {
+		t.Fatalf("MLB overall ShowGamesBack = %#v, want false", mlbOverall)
+	}
+	if nbaDivision == nil || nbaDivision.ShowGamesBack {
+		t.Fatalf("NBA division ShowGamesBack = %#v, want false", nbaDivision)
 	}
 }
 

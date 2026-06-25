@@ -1432,6 +1432,19 @@ func TestStandingsEntryToRowIncludesProviderRank(t *testing.T) {
 	}
 }
 
+func TestStandingsEntryToRowIncludesMLBDivisionGamesBack(t *testing.T) {
+	entry := standingsEntry("22", "Philadelphia", "Phillies", 43, 38)
+	entry.Stats = append(entry.Stats,
+		espnStat{Name: "gamesBehind", Abbreviation: "GB", DisplayValue: "8"},
+		espnStat{Name: "divisionGamesBehind", Abbreviation: "DGB", DisplayValue: "2.5"},
+	)
+
+	got := standingsEntryToRow(entry, models.MLB)
+	if got.GamesBack != "2.5" {
+		t.Fatalf("GamesBack = %q, want division games back 2.5", got.GamesBack)
+	}
+}
+
 func TestStandingsEntryToRowUsesNHLDisplayHomeAwayRecords(t *testing.T) {
 	entry := espnStandingsEntry{
 		Team: espnTeam{ID: "15", Location: "Philadelphia", Name: "Flyers", Abbreviation: "PHI"},
@@ -1484,6 +1497,37 @@ func TestLeagueStandingsKeepsConferenceAndOverallViewsDistinct(t *testing.T) {
 	}
 }
 
+func TestLeagueStandingsAddsGamesBackForMLBNationalLeagueView(t *testing.T) {
+	resp := espnStandingsResp{
+		Children: []espnStandingsGroup{
+			{
+				Name: "National League",
+				Standings: espnStandingsData{Entries: []espnStandingsEntry{
+					standingsEntry("15", "Atlanta", "Braves", 48, 31),
+					standingsEntry("22", "Philadelphia", "Phillies", 44, 36),
+					standingsEntry("28", "Miami", "Marlins", 42, 39),
+					standingsEntry("19", "Los Angeles", "Dodgers", 40, 40),
+				}},
+			},
+		},
+	}
+
+	got := leagueStandingsFromResponse(sportCfg{Sport: models.MLB, PhillyTeamIDs: []string{"22"}}, resp)
+	var nl *models.StandingsView
+	for i := range got.Views {
+		if got.Views[i].Key == "league-national-league" {
+			nl = &got.Views[i]
+			break
+		}
+	}
+	if nl == nil || len(nl.Rows) != 4 {
+		t.Fatalf("National League view = %#v, want 4 rows", nl)
+	}
+	if nl.Rows[0].GamesBack != "-" || nl.Rows[1].GamesBack != "4.5" || nl.Rows[2].GamesBack != "7" {
+		t.Fatalf("National League GamesBack = %q/%q/%q, want -/4.5/7", nl.Rows[0].GamesBack, nl.Rows[1].GamesBack, nl.Rows[2].GamesBack)
+	}
+}
+
 func TestStandingsRowsFromEntriesPreservesProviderOrderWithoutRank(t *testing.T) {
 	rows := standingsRowsFromEntries([]espnStandingsEntry{
 		standingsEntry("1", "Team", "Middle", 40, 30),
@@ -1518,6 +1562,24 @@ func TestOverallStandingsSortIgnoresConferenceSeed(t *testing.T) {
 	}
 	if rows[0].Rank != "1" || rows[1].Rank != "2" {
 		t.Fatalf("overall ranks = %q/%q, want recalculated 1/2", rows[0].Rank, rows[1].Rank)
+	}
+}
+
+func TestMLBGamesBackIsRelativeToScopeLeader(t *testing.T) {
+	rows := withMLBGamesBack([]models.StandingsRow{
+		{Team: models.Team{Name: "Braves"}, Record: "48-31", GamesBack: "3"},
+		{Team: models.Team{Name: "Phillies"}, Record: "44-36", GamesBack: "4.5"},
+		{Team: models.Team{Name: "Marlins"}, Record: "42-39", GamesBack: "7"},
+	})
+
+	if rows[0].GamesBack != "-" {
+		t.Fatalf("leader GamesBack = %q, want -", rows[0].GamesBack)
+	}
+	if rows[1].GamesBack != "4.5" {
+		t.Fatalf("Phillies GamesBack = %q, want 4.5", rows[1].GamesBack)
+	}
+	if rows[2].GamesBack != "7" {
+		t.Fatalf("Marlins GamesBack = %q, want 7", rows[2].GamesBack)
 	}
 }
 

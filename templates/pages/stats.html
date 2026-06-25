@@ -37,8 +37,9 @@
 
         {{range .Views}}
         <div class="league-scope" data-league-scope-panel="{{.Key}}" {{if not .Active}}hidden{{end}}>
-          <table class="standings-table standings-table--large standings-table--league">
-            <thead><tr><th>Rank</th><th>Team</th><th>Record</th><th>Home</th><th>Away</th></tr></thead>
+          {{$showGamesBack := .ShowGamesBack}}
+          <table class="standings-table standings-table--large standings-table--league {{if .ShowGamesBack}}standings-table--with-gb{{end}}">
+            <thead><tr><th>Rank</th><th>Team</th><th>Record</th><th>Home</th><th>Away</th>{{if .ShowGamesBack}}<th>GB</th>{{end}}</tr></thead>
             <tbody>
               {{range .Rows}}
               <tr class="{{if isPhilly .Team}}standings-row--philly{{end}}" style="--team-color:{{.Team.Primary}}">
@@ -47,6 +48,7 @@
                 <td><span class="stat-value">{{.Record}}</span></td>
                 <td><span class="stat-value">{{.Home}}</span></td>
                 <td><span class="stat-value">{{.Away}}</span></td>
+                {{if $showGamesBack}}<td class="standings-games-back"><span class="standings-mobile-label">Games Back</span><span class="stat-value">{{if .GamesBack}}{{.GamesBack}}{{else}}-{{end}}</span></td>{{end}}
               </tr>
               {{end}}
             </tbody>

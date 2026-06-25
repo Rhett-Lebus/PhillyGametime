@@ -151,13 +151,14 @@ type SoccerTeamStats struct {
 }
 
 type StandingsRow struct {
-	Team     Team
-	Record   string // overall e.g. "9-3" or "28-14-6" (NHL)
-	Home     string // home W-L
-	Away     string // away W-L
-	Rank     string // provider rank/seed when available
-	HomeDiff int
-	AwayDiff int
+	Team      Team
+	Record    string // overall e.g. "9-3" or "28-14-6" (NHL)
+	Home      string // home W-L
+	Away      string // away W-L
+	Rank      string // provider rank/seed when available
+	GamesBack string // games behind, when provided by standings source
+	HomeDiff  int
+	AwayDiff  int
 }
 
 type LeagueStandings struct {

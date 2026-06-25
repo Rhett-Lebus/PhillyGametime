@@ -340,11 +340,12 @@ type LeagueStandingsView struct {
 }
 
 type LeagueScopeView struct {
-	Key    string
-	Label  string
-	Scope  string
-	Active bool
-	Rows   []models.StandingsRow
+	Key           string
+	Label         string
+	Scope         string
+	Active        bool
+	ShowGamesBack bool
+	Rows          []models.StandingsRow
 }
 
 type TVData struct {
@@ -646,7 +647,7 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports ma
 			continue
 		}
 		scopeViews := make([]LeagueScopeView, 0, len(league.Views))
-		activeScope := preferredLeagueScope(league.Views)
+		activeScope := preferredLeagueScope(league.Sport, league.Views)
 		leagueViews := append([]models.StandingsView(nil), league.Views...)
 		sort.SliceStable(leagueViews, func(i, j int) bool {
 			return standingsScopeOrder(leagueViews[i].Key) < standingsScopeOrder(leagueViews[j].Key)
@@ -656,11 +657,12 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports ma
 				continue
 			}
 			scopeViews = append(scopeViews, LeagueScopeView{
-				Key:    view.Key,
-				Label:  view.Label,
-				Scope:  view.Scope,
-				Active: view.Key == activeScope,
-				Rows:   view.Rows,
+				Key:           view.Key,
+				Label:         view.Label,
+				Scope:         view.Scope,
+				Active:        view.Key == activeScope,
+				ShowGamesBack: league.Sport == models.MLB && isMLBGamesBackScope(view.Key),
+				Rows:          view.Rows,
 			})
 		}
 		if len(scopeViews) == 0 {
@@ -674,6 +676,10 @@ func buildLeagueStandingsViews(leagues []models.LeagueStandings, activeSports ma
 		})
 	}
 	return views
+}
+
+func isMLBGamesBackScope(key string) bool {
+	return strings.HasPrefix(key, "division") || strings.HasPrefix(key, "league") || strings.HasPrefix(key, "conference")
 }
 
 func requestedStatsSport(r *http.Request, standings []models.StandingsRow) models.Sport {
@@ -765,8 +771,12 @@ func statsSportOrder(sport models.Sport) int {
 	}
 }
 
-func preferredLeagueScope(views []models.StandingsView) string {
-	for _, key := range []string{"overall", "league", "conference", "division"} {
+func preferredLeagueScope(sport models.Sport, views []models.StandingsView) string {
+	preferred := []string{"overall", "league", "conference", "division"}
+	if sport == models.MLB {
+		preferred = []string{"division", "overall", "league", "conference"}
+	}
+	for _, key := range preferred {
 		for _, view := range views {
 			if strings.HasPrefix(view.Key, key) && len(view.Rows) > 0 {
 				return view.Key

@@ -304,24 +304,24 @@ func (s *MockStore) GetStandings() []models.StandingsRow {
 }
 
 func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
-	row := func(rank int, team models.Team, record, home, away string, homeDiff, awayDiff int) models.StandingsRow {
-		return models.StandingsRow{Team: team, Record: record, Home: home, Away: away, Rank: strconv.Itoa(rank), HomeDiff: homeDiff, AwayDiff: awayDiff}
+	row := func(rank int, team models.Team, record, home, away, gamesBack string, homeDiff, awayDiff int) models.StandingsRow {
+		return models.StandingsRow{Team: team, Record: record, Home: home, Away: away, Rank: strconv.Itoa(rank), GamesBack: gamesBack, HomeDiff: homeDiff, AwayDiff: awayDiff}
 	}
 	leagues := []models.LeagueStandings{
 		{
 			Sport: models.MLB,
 			Views: []models.StandingsView{
 				{Key: "division", Label: "NL East", Scope: "Division", Rows: []models.StandingsRow{
-					row(1, Phillies, "43-38", "25-16", "18-22", 9, -4),
-					row(2, Braves, "41-40", "23-17", "18-23", 6, -5),
-					row(3, Mets, "39-42", "21-20", "18-22", 1, -4),
-					row(4, Marlins, "31-50", "17-23", "14-27", -6, -13),
+					row(1, Phillies, "43-38", "25-16", "18-22", "-", 9, -4),
+					row(2, Braves, "41-40", "23-17", "18-23", "2", 6, -5),
+					row(3, Mets, "39-42", "21-20", "18-22", "4", 1, -4),
+					row(4, Marlins, "31-50", "17-23", "14-27", "12", -6, -13),
 				}},
 				{Key: "overall", Label: "MLB", Scope: "Overall", Rows: []models.StandingsRow{
-					row(1, Phillies, "43-38", "25-16", "18-22", 9, -4),
-					row(2, Braves, "41-40", "23-17", "18-23", 6, -5),
-					row(3, Mets, "39-42", "21-20", "18-22", 1, -4),
-					row(4, Marlins, "31-50", "17-23", "14-27", -6, -13),
+					row(1, Phillies, "43-38", "25-16", "18-22", "-", 9, -4),
+					row(2, Braves, "41-40", "23-17", "18-23", "2", 6, -5),
+					row(3, Mets, "39-42", "21-20", "18-22", "4", 1, -4),
+					row(4, Marlins, "31-50", "17-23", "14-27", "12", -6, -13),
 				}},
 			},
 		},
@@ -329,15 +329,15 @@ func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
 			Sport: models.NBA,
 			Views: []models.StandingsView{
 				{Key: "division", Label: "Atlantic", Scope: "Division", Rows: []models.StandingsRow{
-					row(1, Knicks, "42-23", "24-9", "18-14", 15, 4),
-					row(2, Sixers, "37-28", "22-10", "15-18", 12, -3),
-					row(3, Nets, "24-41", "13-19", "11-22", -6, -11),
+					row(1, Knicks, "42-23", "24-9", "18-14", "", 15, 4),
+					row(2, Sixers, "37-28", "22-10", "15-18", "", 12, -3),
+					row(3, Nets, "24-41", "13-19", "11-22", "", -6, -11),
 				}},
 				{Key: "conference", Label: "Eastern Conference", Scope: "Conference", Rows: []models.StandingsRow{
-					row(1, Knicks, "42-23", "24-9", "18-14", 15, 4),
-					row(2, Sixers, "37-28", "22-10", "15-18", 12, -3),
-					row(3, Bucks, "35-30", "20-13", "15-17", 7, -2),
-					row(4, Nets, "24-41", "13-19", "11-22", -6, -11),
+					row(1, Knicks, "42-23", "24-9", "18-14", "", 15, 4),
+					row(2, Sixers, "37-28", "22-10", "15-18", "", 12, -3),
+					row(3, Bucks, "35-30", "20-13", "15-17", "", 7, -2),
+					row(4, Nets, "24-41", "13-19", "11-22", "", -6, -11),
 				}},
 			},
 		},
@@ -345,9 +345,9 @@ func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
 			Sport: models.NFL,
 			Views: []models.StandingsView{
 				{Key: "division", Label: "NFC East", Scope: "Division", Rows: []models.StandingsRow{
-					row(1, Eagles, "14-3", "8-2", "6-1", 6, 5),
-					row(2, Cowboys, "10-7", "6-3", "4-4", 3, 0),
-					row(3, Giants, "6-11", "3-5", "3-6", -2, -3),
+					row(1, Eagles, "14-3", "8-2", "6-1", "", 6, 5),
+					row(2, Cowboys, "10-7", "6-3", "4-4", "", 3, 0),
+					row(3, Giants, "6-11", "3-5", "3-6", "", -2, -3),
 				}},
 			},
 		},
@@ -355,9 +355,9 @@ func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
 			Sport: models.NHL,
 			Views: []models.StandingsView{
 				{Key: "division", Label: "Metropolitan", Scope: "Division", Rows: []models.StandingsRow{
-					row(1, Rangers, "44-24-8", "24-10-4", "20-14-4", 14, 6),
-					row(2, Flyers, "32-32-11", "18-14-6", "14-18-5", 4, -4),
-					row(3, Penguins, "31-34-10", "17-16-5", "14-18-5", 1, -4),
+					row(1, Rangers, "44-24-8", "24-10-4", "20-14-4", "", 14, 6),
+					row(2, Flyers, "32-32-11", "18-14-6", "14-18-5", "", 4, -4),
+					row(3, Penguins, "31-34-10", "17-16-5", "14-18-5", "", 1, -4),
 				}},
 			},
 		},
@@ -365,8 +365,8 @@ func (s *MockStore) GetLeagueStandings() []models.LeagueStandings {
 			Sport: models.MLS,
 			Views: []models.StandingsView{
 				{Key: "conference", Label: "Eastern Conference", Scope: "Conference", Rows: []models.StandingsRow{
-					row(1, Union, "10-8-5", "6-3-2", "4-5-3", 3, -1),
-					row(2, RedBulls, "9-9-5", "6-4-2", "3-5-3", 2, -2),
+					row(1, Union, "10-8-5", "6-3-2", "4-5-3", "", 3, -1),
+					row(2, RedBulls, "9-9-5", "6-4-2", "3-5-3", "", 2, -2),
 				}},
 			},
 		},

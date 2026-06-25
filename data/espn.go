@@ -1382,11 +1382,17 @@ func leagueStandingsFromResponse(cfg sportCfg, resp espnStandingsResp) models.Le
 	views := make([]models.StandingsView, 0, 3)
 	addView := func(key, scope, label string, entries []espnStandingsEntry) {
 		rows := standingsRowsFromEntries(uniqueStandingsEntries(entries), cfg.Sport, standingsSortGroup)
+		if cfg.Sport == models.MLB {
+			rows = withMLBGamesBack(rows)
+		}
 		appendStandingsView(&views, key, scope, label, rows)
 	}
 
 	if division := phillyDivisionStandings(cfg.Sport, allEntries); len(division.entries) > 0 {
 		rows := standingsRowsFromEntries(division.entries, cfg.Sport, standingsSortOverall)
+		if cfg.Sport == models.MLB {
+			rows = withMLBGamesBack(rows)
+		}
 		appendStandingsView(&views, "division", "Division", division.label, rows)
 	}
 	if len(phillyPath) > 0 {
@@ -1524,6 +1530,34 @@ func standingsRowsFromEntries(entries []espnStandingsEntry, sport models.Sport, 
 	if mode == standingsSortOverall {
 		for i := range rows {
 			rows[i].Rank = strconv.Itoa(i + 1)
+		}
+	}
+	return rows
+}
+
+func withMLBGamesBack(rows []models.StandingsRow) []models.StandingsRow {
+	if len(rows) == 0 {
+		return rows
+	}
+	leaderWins, leaderLosses, _, ok := parseRecordPartsOK(rows[0].Record)
+	if !ok {
+		return rows
+	}
+	rows = append([]models.StandingsRow(nil), rows...)
+	for i := range rows {
+		wins, losses, _, ok := parseRecordPartsOK(rows[i].Record)
+		if !ok {
+			continue
+		}
+		gamesBackHalves := (leaderWins - wins) + (losses - leaderLosses)
+		if i == 0 || gamesBackHalves <= 0 {
+			rows[i].GamesBack = "-"
+			continue
+		}
+		if gamesBackHalves%2 == 0 {
+			rows[i].GamesBack = strconv.Itoa(gamesBackHalves / 2)
+		} else {
+			rows[i].GamesBack = fmt.Sprintf("%d.5", gamesBackHalves/2)
 		}
 	}
 	return rows
@@ -2749,13 +2783,14 @@ func standingsEntryToRow(entry espnStandingsEntry, sport models.Sport) models.St
 	}
 
 	return models.StandingsRow{
-		Team:     espnToTeam(entry.Team, sport),
-		Record:   record,
-		Home:     homeStr,
-		Away:     awayStr,
-		Rank:     displayStat("playoffSeed", "rank", "seed", "position"),
-		HomeDiff: hw - hl,
-		AwayDiff: rw - rl,
+		Team:      espnToTeam(entry.Team, sport),
+		Record:    record,
+		Home:      homeStr,
+		Away:      awayStr,
+		Rank:      displayStat("playoffSeed", "rank", "seed", "position"),
+		GamesBack: displayStat("divisionGamesBehind", "gamesBehind"),
+		HomeDiff:  hw - hl,
+		AwayDiff:  rw - rl,
 	}
 }
 
